@@ -71,7 +71,11 @@ validate_github:
         exit 1
       fi
 
-      git ls-remote "https://x-access-token:${GITHUB_PAT}@github.com/${GITHUB_REPO}.git" HEAD >/dev/null
+      # git prints the remote URL, which embeds the token, in its error messages: keep them out of the job log
+      if ! git ls-remote "https://x-access-token:${GITHUB_PAT}@github.com/${GITHUB_REPO}.git" HEAD >/dev/null 2>&1; then
+        echo "git ls-remote against ${GITHUB_REPO} failed. Check that GITHUB_PAT can read the repository."
+        exit 1
+      fi
       echo "GitHub access validation passed."
 
 test:
@@ -223,6 +227,14 @@ mirror:
         exit 0
       fi
 
+      # git prints remote URLs, which embed the tokens, in its error messages: mask them in the job log
+      masked_git() {
+        status=0
+        output="$(git "$@" 2>&1)" || status=$?
+        printf '%s\n' "$output" | sed -e "s/${GITHUB_PAT}/***/g" -e "s/${GITLAB_PUSH_TOKEN:-__unset__}/***/g"
+        return $status
+      }
+
       git config user.email "gitlab-ci@devpossible.com"
       git config user.name "GitLab CI"
 
@@ -236,7 +248,7 @@ mirror:
         fi
 
         git remote set-url origin "https://oauth2:${GITLAB_PUSH_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
-        git push origin "v${VERSION}"
+        masked_git push origin "v${VERSION}"
       else
         echo "Tag v${VERSION} already exists."
       fi
@@ -244,8 +256,8 @@ mirror:
       git remote add github "https://x-access-token:${GITHUB_PAT}@github.com/${GITHUB_REPO}.git" 2>/dev/null \
         || git remote set-url github "https://x-access-token:${GITHUB_PAT}@github.com/${GITHUB_REPO}.git"
 
-      git push github "HEAD:${CI_COMMIT_BRANCH}" --force
-      git push github "v${VERSION}"
+      masked_git push github "HEAD:${CI_COMMIT_BRANCH}" --force
+      masked_git push github "v${VERSION}"
 
 publish:
   stage: publish
