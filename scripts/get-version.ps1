@@ -52,12 +52,13 @@ function Parse-Version {
 function Get-CommitsSinceTag {
     param([string]$Tag)
 
-    # Use %B (full body) instead of %s (subject only) to detect BREAKING CHANGE in commit body/footer
+    # Use %B (full body) instead of %s (subject only) to detect BREAKING CHANGE in commit body/footer.
+    # Merge commits are skipped: their bodies can quote other commits' subjects and footers.
     $separator = '---COMMIT-SEPARATOR---'
     if ($Tag) {
-        $raw = git log "$Tag..HEAD" --pretty=format:"%B${separator}" 2>$null
+        $raw = git log "$Tag..HEAD" --no-merges --pretty=format:"%B${separator}" 2>$null
     } else {
-        $raw = git log --pretty=format:"%B${separator}" 2>$null
+        $raw = git log --no-merges --pretty=format:"%B${separator}" 2>$null
     }
 
     if ($LASTEXITCODE -ne 0) { return @() }
@@ -96,7 +97,8 @@ $otherCount = 0
 
 # Regex patterns for conventional commits
 $breakingPattern = '^[a-z]+(\([^)]+\))?!:'
-$breakingChangePattern = 'BREAKING CHANGE:'
+# A footer starts its own line; this avoids matching the phrase inside prose
+$breakingChangePattern = '(?m)^BREAKING[ -]CHANGE:'
 $featPattern = '^feat(\([^)]+\))?:'
 $fixPattern = '^fix(\([^)]+\))?:'
 $otherPattern = '^(docs|style|refactor|perf|test|build|ci|chore)(\([^)]+\))?:'
