@@ -41,9 +41,12 @@ function Remove-PowerStubDirectAlias {
         Write-Verbose "Removed function '$AliasName'"
     }
 
-    # Remove from config
-    $directAliases.Remove($AliasName)
-    Set-PowerStubConfigurationKey 'DirectAliases' $directAliases
+    # Remove only this alias from config so other sessions' aliases are kept
+    Update-PowerStubConfiguration {
+        if ($Script:PSTBSettings['DirectAliases']) {
+            $Script:PSTBSettings['DirectAliases'].Remove($AliasName)
+        }
+    }
 
     Write-Verbose "Removed direct alias '$AliasName' from configuration"
 }

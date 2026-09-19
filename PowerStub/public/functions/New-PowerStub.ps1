@@ -47,11 +47,6 @@ function New-PowerStub {
         [switch]$force
     )
 
-    Sync-PowerStubConfiguration
-
-    #check to see if the path is already registered
-    $stubs = Get-PowerStubConfigurationKey 'Stubs'
-
     # Build stub configuration - either simple path or hashtable with git info
     $stubConfig = $path
 
@@ -67,16 +62,9 @@ function New-PowerStub {
         }
     }
 
-    if ($stubs.Keys -contains $name) {
-        if ($force) {
-            $stubs[$name] = $stubConfig
-        }
-        else {
-            throw "Stub $name already exists. Use -Force to overwrite."
-        }
-    }
-    else {
-        $stubs[$name] = $stubConfig
+    Sync-PowerStubConfiguration
+    if ((Get-PowerStubConfigurationKey 'Stubs').Keys -contains $name -and -not $force) {
+        throw "Stub $name already exists. Use -Force to overwrite."
     }
 
     #create the folder and standard child folders, if necessary
@@ -88,8 +76,14 @@ function New-PowerStub {
         }
     }
 
-    #update the configuration
-    Set-PowerStubConfigurationKey 'Stubs' $stubs
+    #update the configuration, adding only this stub so other sessions' registrations are kept
+    Update-PowerStubConfiguration {
+        $stubs = $Script:PSTBSettings['Stubs']
+        if ($stubs.Keys -contains $name -and -not $force) {
+            throw "Stub $name already exists. Use -Force to overwrite."
+        }
+        $stubs[$name] = $stubConfig
+    }
 }
 
 

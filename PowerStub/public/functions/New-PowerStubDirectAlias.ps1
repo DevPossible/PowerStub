@@ -48,6 +48,10 @@ function New-PowerStubDirectAlias {
         [switch]$Force
     )
 
+    if (Test-PowerStubReservedName $AliasName) {
+        throw "'$AliasName' is a reserved name and cannot be used as a direct alias."
+    }
+
     Sync-PowerStubConfiguration
 
     # Verify stub exists
@@ -129,6 +133,11 @@ function New-PowerStubDirectAlias {
     $scriptBlock = [scriptblock]::Create($functionBody)
     Set-Item -Path "function:global:$AliasName" -Value $scriptBlock
 
+    # Remember which global functions are ours so module removal only cleans up those
+    if ($Script:RegisteredDirectAliases -notcontains $AliasName) {
+        $Script:RegisteredDirectAliases += $AliasName
+    }
+
     # Register ArgumentCompleter for -Command parameter
     # Note: Must call Find-PowerStubCommands through the module since it's a private function
     $commandCompleter = {
@@ -158,12 +167,14 @@ function New-PowerStubDirectAlias {
 
     # Store in config for re-registration on module load
     $directAliases = Get-PowerStubConfigurationKey 'DirectAliases'
-    if (-not $directAliases) {
-        $directAliases = @{}
-    }
-    if (-not $directAliases.ContainsKey($AliasName) -or $directAliases[$AliasName] -ne $Stub) {
-        $directAliases[$AliasName] = $Stub
-        Set-PowerStubConfigurationKey 'DirectAliases' $directAliases
+    if (-not $directAliases -or $directAliases[$AliasName] -ne $Stub) {
+        # Add only this alias so other sessions' aliases are kept
+        Update-PowerStubConfiguration {
+            if (-not $Script:PSTBSettings['DirectAliases']) {
+                $Script:PSTBSettings['DirectAliases'] = @{}
+            }
+            $Script:PSTBSettings['DirectAliases'][$AliasName] = $Stub
+        }
     }
 
     # Return info object

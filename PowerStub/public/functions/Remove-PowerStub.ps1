@@ -33,15 +33,27 @@ function Remove-PowerStub {
         [string]$name
     )
 
-    Sync-PowerStubConfiguration
-    
-    $stubs = Get-PowerStubConfigurationKey 'Stubs'
-    if (-not $stubs.ContainsKey($name)) {
-        throw "Stub $name does not exist."
+    # Remove only this stub (and the direct aliases pointing at it) so other sessions' changes are kept
+    $removedAliases = Update-PowerStubConfiguration {
+        $stubs = $Script:PSTBSettings['Stubs']
+        if (-not $stubs.ContainsKey($name)) {
+            throw "Stub $name does not exist."
+        }
+        $stubs.Remove($name)
+
+        $directAliases = $Script:PSTBSettings['DirectAliases']
+        if ($directAliases) {
+            foreach ($aliasName in @($directAliases.Keys | Where-Object { $directAliases[$_] -eq $name })) {
+                $directAliases.Remove($aliasName)
+                $aliasName
+            }
+        }
     }
-    
-    $stubs.Remove($name)
-        
-    #update the configuration
-    Set-PowerStubConfigurationKey 'Stubs' $stubs
+
+    foreach ($aliasName in $removedAliases) {
+        # Note: Remove-Item does nothing for a 'function:global:' path; the unqualified path works
+        if (Test-Path "function:$aliasName") {
+            Remove-Item "function:$aliasName" -Force
+        }
+    }
 }

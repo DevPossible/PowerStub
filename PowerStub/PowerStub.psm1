@@ -56,8 +56,7 @@ Export-ModuleMember -Function $exports
 # setup and export the main alias
 $alias = Get-PowerStubConfigurationKey 'InvokeAlias'
 # Validate alias name to prevent shadowing critical system commands
-$reservedNames = @('cd', 'ls', 'dir', 'where', 'git', 'python', 'node', 'npm', 'set', 'del', 'rm', 'cp', 'mv', 'cat', 'echo', 'type', 'cls', 'clear', 'exit', 'push', 'pop')
-if ($alias -notmatch '^[a-zA-Z][a-zA-Z0-9_\-]{0,20}$' -or $reservedNames -contains $alias.ToLower()) {
+if ($alias -notmatch '^[a-zA-Z][a-zA-Z0-9_\-]{0,20}$' -or (Test-PowerStubReservedName $alias)) {
     Write-Warning "PowerStub: Invalid or reserved InvokeAlias '$alias'. Falling back to 'pstb'."
     $alias = 'pstb'
 }
@@ -178,6 +177,7 @@ if ($psrlModule) {
 
 # Re-register any saved direct aliases
 Write-Verbose "Registering saved direct aliases"
+$Script:RegisteredDirectAliases = @()
 $directAliases = Get-PowerStubConfigurationKey 'DirectAliases'
 if ($directAliases) {
     # Copy keys to array to avoid "Collection was modified" error during enumeration
@@ -188,7 +188,8 @@ if ($directAliases) {
         $stubs = Get-PowerStubConfigurationKey 'Stubs'
         if ($stubs.Keys -contains $stubName) {
             try {
-                New-PowerStubDirectAlias -AliasName $aliasName -Stub $stubName -Force -ErrorAction Stop | Out-Null
+                # No -Force: a name from the config file must never silently replace an existing command
+                New-PowerStubDirectAlias -AliasName $aliasName -Stub $stubName -ErrorAction Stop | Out-Null
                 Write-Verbose "Registered direct alias '$aliasName' for stub '$stubName'"
             } catch {
                 Write-Warning "Could not register direct alias '$aliasName': $_"
@@ -204,12 +205,11 @@ if ($directAliases) {
 
 # Cleanup direct aliases on module removal
 $MyInvocation.MyCommand.ScriptBlock.Module.OnRemove = {
-    $directAliases = Get-PowerStubConfigurationKey 'DirectAliases'
-    if ($directAliases) {
-        foreach ($aliasName in @($directAliases.Keys)) {
-            if (Test-Path "function:global:$aliasName") {
-                Remove-Item "function:global:$aliasName" -Force -ErrorAction SilentlyContinue
-            }
+    # Only remove the functions this module created, never a same-named command of the user's
+    foreach ($aliasName in $Script:RegisteredDirectAliases) {
+        # Note: Remove-Item does nothing for a 'function:global:' path; the unqualified path works
+        if (Test-Path "function:$aliasName") {
+            Remove-Item "function:$aliasName" -Force -ErrorAction SilentlyContinue
         }
     }
 }

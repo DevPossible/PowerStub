@@ -36,6 +36,13 @@ function Set-PowerStubConfigurationKey {
         Write-Warning "PowerStub: Unknown configuration key '$key'. Known keys: $($knownKeys -join ', ')"
     }
 
-    $Script:PSTBSettings[$key] = $value
-    Export-PowerStubConfiguration
+    # Internal keys are never persisted, so there is nothing to write
+    if ((Get-PowerStubConfigurationKey 'InternalConfigKeys') -contains $key) {
+        $Script:PSTBSettings[$key] = $value
+        return
+    }
+
+    # Note: for keys holding a collection (Stubs, DirectAliases), change the entry inside
+    # Update-PowerStubConfiguration instead, so other sessions' entries are kept.
+    Update-PowerStubConfiguration { $Script:PSTBSettings[$key] = $value }
 }

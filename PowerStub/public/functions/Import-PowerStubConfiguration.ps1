@@ -30,6 +30,7 @@
 
 
 function Import-PowerStubConfiguration {
+    [CmdletBinding()]
     param (
         [switch] $reset
     )
@@ -56,27 +57,35 @@ function Import-PowerStubConfiguration {
 
     # Check for config file, with migration from legacy location
     $configToLoad = $null
+    $migrating = $false
     if (Test-Path $fileName) {
         $configToLoad = $fileName
         Write-Verbose "Using config file: $fileName"
     }
-    elseif ($legacyFileName -and (Test-Path $legacyFileName)) {
-        # Migrate from legacy location (version-specific module folder)
-        Write-Host "Migrating PowerStub config from legacy location..." -ForegroundColor Yellow
-        Write-Verbose "Legacy config found at: $legacyFileName"
-        Copy-Item -Path $legacyFileName -Destination $fileName -Force
-        $configToLoad = $fileName
-        Write-Host "  Config migrated to: $fileName" -ForegroundColor Green
-
-        # Also check parent module folders for other version configs to migrate
+    elseif ($legacyFileName) {
+        # Old versions kept the config in the version-specific module folder. Look in this
+        # module's folder and its sibling version folders for one that has registered stubs.
+        # The PowerStub.json shipped with the module is empty and is never migrated.
         $moduleParent = Split-Path $Script:ModulePath -Parent
-        $otherVersionConfigs = Get-ChildItem -Path $moduleParent -Directory -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -ne (Split-Path $Script:ModulePath -Leaf) } |
-            ForEach-Object { Join-Path $_.FullName 'PowerStub.json' } |
-            Where-Object { Test-Path $_ }
+        $legacyCandidates = @($legacyFileName) + @(
+            Get-ChildItem -Path $moduleParent -Directory -ErrorAction SilentlyContinue |
+                ForEach-Object { Join-Path $_.FullName 'PowerStub.json' }
+        ) | Select-Object -Unique | Where-Object { Test-Path -LiteralPath $_ }
 
-        if ($otherVersionConfigs) {
-            Write-Verbose "Found configs in other module versions: $($otherVersionConfigs -join ', ')"
+        $configToLoad = $legacyCandidates |
+            Where-Object {
+                try {
+                    $legacyStubs = (Get-Content -LiteralPath $_ -Raw | ConvertFrom-Json -ErrorAction Stop).Stubs
+                    $legacyStubs -and @($legacyStubs.PSObject.Properties).Count -gt 0
+                }
+                catch { $false }
+            } |
+            Sort-Object { (Get-Item -LiteralPath $_).LastWriteTimeUtc } -Descending |
+            Select-Object -First 1
+
+        if ($configToLoad) {
+            $migrating = $true
+            Write-Host "Migrating PowerStub config from legacy location: $configToLoad" -ForegroundColor Yellow
         }
     }
 
@@ -93,13 +102,37 @@ function Import-PowerStubConfiguration {
             throw
         }
 
-        $newConfig = $configJson | ConvertFrom-Json | ConvertTo-Hashtable
+        $newConfig = $null
+        try {
+            $newConfig = $configJson | ConvertFrom-Json -ErrorAction Stop | ConvertTo-Hashtable
+        }
+        catch {
+            Write-Verbose "Configuration file is not valid JSON: $_"
+        }
+
+        if ($newConfig -isnot [hashtable]) {
+            # Blank or corrupt. Keep a copy, because the next save replaces the file,
+            # and carry on with the current settings so the module still loads.
+            $corruptCopy = "$configToLoad.corrupt-$(Get-Date -Format 'yyyyMMddHHmmss')"
+            Copy-Item -LiteralPath $configToLoad -Destination $corruptCopy -Force
+            Write-Warning "PowerStub: Configuration file '$configToLoad' is blank or corrupt and was ignored. A copy was saved to '$corruptCopy'."
+            $Script:PSTBSettings['ConfigFileLastWriteUtc'] = (Get-Item -LiteralPath $configToLoad).LastWriteTimeUtc
+            return
+        }
+
         foreach ($key in $newConfig.Keys) {
             #do not import values for internal keys
             if ($noImport -contains $key) { continue }
             Write-Verbose "Importing Configuration Key: $key"
             $Script:PSTBSettings[$key] = $newConfig[$key]
         }
+
+        if ($migrating) {
+            Export-PowerStubConfiguration
+            Write-Host "  Config migrated to: $fileName" -ForegroundColor Green
+            return
+        }
+
         try {
             $Script:PSTBSettings['ConfigFileLastWriteUtc'] = (Get-Item -LiteralPath $configToLoad -ErrorAction Stop).LastWriteTimeUtc
         }

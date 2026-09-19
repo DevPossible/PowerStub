@@ -31,19 +31,11 @@ function Export-PowerStubConfiguration {
         $exportConfig[$key] = $Script:PSTBSettings[$key]
     }
 
-    $hashAlgorithm = [System.Security.Cryptography.SHA256]::Create()
-    $pathBytes = [System.Text.Encoding]::UTF8.GetBytes([System.IO.Path]::GetFullPath($fileName).ToUpperInvariant())
-    $hash = [System.BitConverter]::ToString($hashAlgorithm.ComputeHash($pathBytes)).Replace('-', '')
-    $mutexName = "PowerStubConfig-$hash"
-    $mutex = [System.Threading.Mutex]::new($false, $mutexName)
-    $lockTaken = $false
     $tempFile = Join-Path $configDir "$([System.IO.Path]::GetFileName($fileName)).$PID.$([guid]::NewGuid()).tmp"
+    $lock = $null
 
     try {
-        $lockTaken = $mutex.WaitOne([TimeSpan]::FromSeconds(10))
-        if (-not $lockTaken) {
-            throw "Timed out waiting to write PowerStub configuration file '$fileName'."
-        }
+        $lock = Enter-PowerStubConfigurationLock
 
         # Atomic write: write to a process-unique temp file, then rename into place.
         $exportConfig | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $tempFile -Encoding UTF8
@@ -66,10 +58,6 @@ function Export-PowerStubConfiguration {
         if (Test-Path -LiteralPath $tempFile) {
             Remove-Item -LiteralPath $tempFile -Force -ErrorAction SilentlyContinue
         }
-        if ($lockTaken) {
-            $mutex.ReleaseMutex()
-        }
-        $mutex.Dispose()
-        $hashAlgorithm.Dispose()
+        Exit-PowerStubConfigurationLock $lock
     }
 }
