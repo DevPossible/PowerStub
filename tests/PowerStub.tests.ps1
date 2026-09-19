@@ -1109,6 +1109,20 @@ Describe "Edge Cases and Error Handling" {
     }
 
     Context "Invalid Input" {
+        It "Should say so when a PowerStub command name is used as a stub" {
+            pstb Get-PowerStubs 3>&1 | Out-String | Should -Match "is a PowerStub command: run it on its own"
+        }
+
+        It "Should list the registered stubs when the stub is unknown" {
+            New-PowerStub -Name "KnownStub" -Path $script:SampleStubRoot -Force
+            try {
+                pstb NoSuchStub 3>&1 | Out-String | Should -Match "Registered stubs: .*KnownStub"
+            }
+            finally {
+                Remove-PowerStub -Name "KnownStub"
+            }
+        }
+
         It "Should handle missing Commands folder gracefully" {
             $testPath = Join-Path ([System.IO.Path]::GetTempPath()) "PowerStubTest_$(Get-Random)"
             New-Item $testPath -ItemType Directory -Force | Out-Null

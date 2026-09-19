@@ -19,7 +19,16 @@ function Show-PowerStubCommands {
 
     $stubs = Get-PowerStubConfigurationKey 'Stubs'
     if (-not ($stubs.Keys -contains $Stub)) {
-        Write-Warning "Stub '$Stub' not found in the configuration."
+        $message = "Stub '$Stub' not found in the configuration."
+        # A common slip is putting pstb in front of one of PowerStub's own commands
+        if ($MyInvocation.MyCommand.Module.ExportedCommands.ContainsKey($Stub)) {
+            $message += " '$Stub' is a PowerStub command: run it on its own, without pstb."
+        }
+        else {
+            $registered = if ($stubs.Count -gt 0) { ($stubs.Keys | Sort-Object) -join ', ' } else { '(none)' }
+            $message += " Registered stubs: $registered"
+        }
+        Write-Warning $message
         return
     }
 

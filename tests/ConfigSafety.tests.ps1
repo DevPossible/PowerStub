@@ -199,7 +199,11 @@ Describe "Direct alias safety" {
 
     It "ImportModule_WithAliasTheUserForcedOverAnExistingCommand_RecreatesIt" {
         # The user knowingly shadows a real command ('where' is reserved, so use another application)
-        $app = (Get-Command -CommandType Application | Where-Object { $_.Name -match '^[a-zA-Z][a-zA-Z0-9_-]*\.exe$' } | Select-Object -First 1)
+        # Applications are 'name.exe' on Windows and plain 'name' elsewhere; skip names PowerStub reserves
+        $app = Get-Command -CommandType Application | Where-Object {
+            $_.Name -match '^[a-zA-Z][a-zA-Z0-9_-]*(\.exe)?$' -and
+            -not (InModuleScope PowerStub -Parameters @{ N = [System.IO.Path]::GetFileNameWithoutExtension($_.Name) } { Test-PowerStubReservedName $N })
+        } | Select-Object -First 1
         $aliasName = [System.IO.Path]::GetFileNameWithoutExtension($app.Name)
         Import-PowerStubConfiguration -Reset
         New-PowerStub -Name 'SampleStub' -Path $script:SampleStubRoot
