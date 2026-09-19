@@ -424,3 +424,82 @@ Describe "Parameter-Like Strings Passed as Values" {
         $result.Args[2].Value | Should -Be "--output=result.txt"
     }
 }
+
+# =============================================================================
+# ARGUMENTS THE PROXY USED TO LOSE
+# Regression tests for bugs fixed by making Invoke-PowerStubCommand a parameterless
+# pass-through. tests/ParsingMatrix.tests.ps1 covers the same ground with 300 calls.
+# =============================================================================
+Describe "Arguments the proxy used to lose" {
+    BeforeAll {
+        Import-PowerStubConfiguration -Reset
+        New-PowerStub -Name "SampleStub" -Path $script:SampleStubRoot -Force
+        $script:ArgEcho = Join-Path $script:SampleStubRoot 'Commands\arg-echo.ps1'
+
+        $script:LostExeStubPath = Join-Path ([System.IO.Path]::GetTempPath()) "PowerStubLostExe_$(Get-Random)"
+        $exeCommandsPath = Join-Path $script:LostExeStubPath 'Commands'
+        New-Item -Path $exeCommandsPath -ItemType Directory -Force | Out-Null
+        if ($IsWindows) {
+            Copy-Item -LiteralPath (Join-Path $env:SystemRoot 'System32\cmd.exe') -Destination $exeCommandsPath
+        }
+        New-PowerStub -Name 'LostExeStub' -Path $script:LostExeStubPath -Force
+    }
+
+    AfterAll {
+        if (Test-Path -LiteralPath $script:LostExeStubPath) {
+            Remove-Item -LiteralPath $script:LostExeStubPath -Recurse -Force
+        }
+    }
+
+    It "InvokePowerStubCommand_ExeWithDashArgument_PassesArgumentThrough" -Skip:(-not $IsWindows) {
+        $output = pstb LostExeStub cmd /c echo -v 6>$null
+
+        $output | Should -Be '-v'
+    }
+
+    It "InvokePowerStubCommand_ExeFlagsThatLookLikePstbParameters_ReachTheExe" -Skip:(-not $IsWindows) {
+        # -c used to bind to pstb's -Command, -o was ambiguous, -v became -Verbose
+        $output = pstb LostExeStub cmd /c echo -c Release -o out -v -e K=V 6>$null
+
+        $output | Should -Be '-c Release -o out -v -e K=V'
+    }
+
+    It "InvokePowerStubCommand_EmptyStringArgument_IsPassedThrough" {
+        $direct = & $script:ArgEcho ''
+        $proxied = pstb SampleStub arg-echo '' 6>$null
+
+        $proxied | Should -Be $direct
+        $proxied | Should -Contain 'ARG_COUNT:1'
+    }
+
+    It "InvokePowerStubCommand_LoneZeroArgument_IsPassedThrough" {
+        $proxied = pstb SampleStub arg-echo 0 6>$null
+
+        $proxied | Should -Contain 'ARG_COUNT:1'
+        $proxied | Should -Contain 'ARG[0]:Int32:0'
+    }
+
+    It "InvokePowerStubCommand_ArrayArgument_ArrivesAsSingleArrayLikeDirectCall" {
+        $arr = @('alpha', 'beta')
+
+        $direct = & $script:ArgEcho $arr
+        $proxied = pstb SampleStub arg-echo $arr 6>$null
+
+        $proxied | Should -Be $direct
+        $proxied | Should -Contain 'ARG[0]:Object[]:alpha beta'
+    }
+
+    It "InvokePowerStubCommand_SwitchWithExplicitFalse_IsOff" {
+        $output = pstb SampleStub arg-dump -SwitchParam:$false 6>$null
+        $result = Get-ArgDumpResult $output
+
+        $result.BoundParameters.SwitchParam.Value | Should -Be 'False'
+    }
+
+    It "InvokePowerStubCommand_CommonParameterNames_GoToTheTargetNotToPstb" {
+        $proxied = pstb SampleStub arg-echo -Verbose -ErrorAction Stop 6>$null
+
+        $proxied | Should -Contain 'ARG_COUNT:3'
+        $proxied | Should -Contain 'ARG[0]:String:-Verbose'
+    }
+}

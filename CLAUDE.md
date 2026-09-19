@@ -59,10 +59,10 @@ PowerStub/                        # Repository root
 | File | Function | Purpose |
 |------|----------|---------|
 | `Find-PowerStubCommands.ps1` | Discovery | Finds .ps1/.exe files, filters by alpha./beta. prefix |
-| `Get-PowerStubCommandDynamicParams.ps1` | DynamicParam | Extracts parameters from target command |
-| `Invoke-CheckedCommand.ps1` | Execution | Core command runner using call operator with splatting |
+| `Get-PowerStubCompletion.ps1` | Completion | Tab completion for pstb lines, called by the TabExpansion2 wrapper |
+| `Invoke-CheckedCommand.ps1` | Execution | Core command runner: arguments in by splat, out by splat, untouched |
 | `Invoke-PowerStubUpdate.ps1` | Git | Handles the 'pstb update' virtual verb |
-| `New-DynamicParam.ps1` | Utility | Creates RuntimeDefinedParameter objects |
+| `Resolve-PowerStubInvocation.ps1` | Parsing | Finds the stub, command and target arguments in a pstb call |
 | `ConvertTo-Hashtable.ps1` | Utility | Converts PSObjects to hashtables |
 | `Show-PowerStubOverview.ps1` | Display | Shows overview when pstb runs without args |
 | `Get-PowerStubConfigurationDefaults.ps1` | Config | Returns default config structure |
@@ -148,24 +148,26 @@ do deploy  # Same as: pstb DevOps deploy
 - Re-registered automatically on module load
 - Support full tab completion for commands and parameters
 
-### Dynamic Parameters
+### Argument Pass-Through (read this before touching parsing)
 
-`Invoke-PowerStubCommand` uses `DynamicParam {}` to introspect the target command and expose its parameters. This enables:
+`Invoke-PowerStubCommand` and the generated direct-alias functions are **simple functions with no `param` block and no `[CmdletBinding()]`**. This is deliberate and must stay that way:
 
-- Tab completion for target command parameters
-- Parameter validation passthrough
-- Help text inheritance
+- An advanced function always has the common parameters, and PowerShell prefix-matches every `-flag` against them and against the function's own parameters *before any of our code runs*. As a proxy that made `dotnet build -c Release` bind `-c` to `-Command`, `curl -o file` fail as ambiguous, and `-v`/`-d`/`-e`/`-i`/`-p`/`-w` get swallowed or rejected. It cannot be switched off.
+- With no parameters, every argument arrives in `$args` and is forwarded with an array splat. PowerShell keeps a hidden marker on `$args` elements that were parameter names, so `-Name x`, `-Count:5` and `-Force` still bind on script targets.
+- That marker survives **slicing** (`$args[2..$n]`) and array `+`, but NOT copying elements one at a time (`$list.Add($args[$i])`), NOT a declared `[object[]]` parameter (a one-element array gets reshaped), and NOT `$x = if (...) { $slice }` (unrolls a one-element array). `Invoke-CheckedCommand` therefore takes its arguments by splat: `Invoke-CheckedCommand $path @targetArgs`.
+- `-Switch:$false` is the one form a splat cannot carry; `Invoke-CheckedCommand` moves those pairs into a named splat.
+- `Resolve-PowerStubInvocation` decides which tokens are the stub and command (positional, or the full names `-Stub`/`-Command` before the target's arguments). Execution and completion both use it.
 
-### Smart Tab Completion
+`tests/ParsingMatrix.tests.ps1` runs 300 calls directly and through `pstb` and compares them. Any change here must not lower its agreement count (currently 285/300; the rest are PowerShell changing the call before pstb sees it: a bare `--` is removed, and for executables `-x:value` is split and an unquoted `a,b,c` becomes three arguments - quoting works around all three).
 
-The module uses `Register-ArgumentCompleter` to provide intelligent completion:
+### Tab Completion
 
-- Stub names and virtual verbs for the `-Stub` parameter
-- Command names (with alpha/beta prefix stripping) for the `-Command` parameter
-- Dynamic parameters from the target command via `DynamicParam`
-- Direct aliases get their own argument completers for command names
+Because `pstb` declares no parameters, PowerShell has nothing to complete from, and `Register-ArgumentCompleter` cannot fill the gap (it is not consulted for a partly typed `-Name` on a function). The module therefore **wraps `TabExpansion2`**, the function every host calls for completion (`PowerStub.psm1` installs it, `Get-PowerStubCompletion` does the work):
 
-Note: TabExpansion2 is intentionally NOT overridden to avoid breaking tab completion for other commands.
+- Stub position: stub names and virtual verbs. Command position: command names with alpha/beta prefixes stripped (stub names after `help`/`update`).
+- After that, the line is rewritten to the direct call `& '<target path>' ...` and handed to PowerShell's original completion, so the user gets exactly what a direct call offers: parameters, partly typed names, `ValidateSet`/enum values, paths.
+- The wrapper only answers for `pstb`, `Invoke-PowerStubCommand` and direct aliases. For anything else, or if it throws, it calls the original unchanged. Removing the module restores the original.
+- Test completion by calling `TabExpansion2`, not `[CommandCompletion]::CompleteInput(text, pos, $null)` - that static overload bypasses the function. See `tests/Completion.tests.ps1`.
 
 ### Configuration Management
 
@@ -356,14 +358,11 @@ Common scopes for this project: `config`, `commands`, `alias`, `completion`, `gi
 
 ## Known Issues / TODO
 
-Unfixed argument-passing bugs, each with an expected-to-fail test in `tests/KnownIssues.tests.ps1`. Command parsing is delicate: change it deliberately, with proxied-vs-direct comparison tests.
+Command parsing is delicate: change it deliberately, and check the parsing matrix (see Argument Pass-Through).
 
-- `.exe` commands lose (or crash on) arguments starting with `-` (`Get-Command` returns no `Parameters` for applications)
-- `$?`, `&&` and `||` see success after a failed command; only `$LASTEXITCODE` is reliable
-- Direct aliases do not re-parse array-splatted named parameters the way `pstb` does
-- The named-parameter re-parse keeps only the first value of an array parameter
-- Empty-string arguments are dropped
-- An array argument arrives as separate arguments instead of one `Object[]`
+- `$?`, `&&` and `||` see success after a failed command; only `$LASTEXITCODE` is reliable. Expected-to-fail tests are in `tests/KnownIssues.tests.ps1`.
+- The 15 parsing-matrix calls that still differ from a direct call: a bare `--` is removed by PowerShell before pstb sees it, and for executables `-x:value` is split and an unquoted `a,b,c` becomes three arguments. Quoting (`'--'`, `'-c:v'`, `'a,b,c'`) works around all three.
+- By design, an explicit string array splat such as `@('-Name', 'x')` is passed as plain values, exactly as in a direct call. (pstb used to re-parse it into named parameters.) Forwarding the automatic `$args` with `@args` still carries parameter names.
 
 ## Code Style Guidelines
 
@@ -389,7 +388,7 @@ Tests use Pester framework (`tests/*.tests.ps1`). Every test file sets `POWERSTU
 - Direct aliases (create, remove, persistence, tab completion)
 - Virtual verbs (search, help commands)
 - Command visibility changes (alpha/beta/production lifecycle)
-- Private function unit tests (ConvertTo-Hashtable, Get-PowerStubPath, New-DynamicParam, etc.)
+- Private function unit tests (ConvertTo-Hashtable, Get-PowerStubPath, etc.)
 - Error paths (unregistered stubs, missing commands, invalid config)
 - WhatIf/ShouldProcess support
 - Subfolder command visibility changes
@@ -454,6 +453,6 @@ Get-Command "path/to/script.ps1" | Select-Object -ExpandProperty Parameters
 ### Common Pitfalls
 
 1. **Module scope variables**: Use `$Script:` prefix for module-level state
-2. **ArgumentCompleter registration**: Must happen after module loads
-3. **Dynamic parameter timing**: `DynamicParam {}` runs before `begin {}` block
+2. **Completion**: comes from the `TabExpansion2` wrapper, not from parameters or `Register-ArgumentCompleter`
+3. **Never add a `param` block or `[CmdletBinding()]` to `Invoke-PowerStubCommand`**: see Argument Pass-Through
 4. **Exit code handling**: `.exe` files set `$LASTEXITCODE`, scripts may not

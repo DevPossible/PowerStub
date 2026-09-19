@@ -22,16 +22,17 @@
     SPECIAL CHARACTER ESCAPING STRATEGY - POWERSTUB
     ============================================================================
 
-    PowerStub forwards arguments using the call operator (&) with splatting.
-    Dynamic parameters are captured via DynamicParam and forwarded as a
-    hashtable splat (@namedParams). Remaining positional arguments are forwarded
-    as an array splat (@positionalArgs). PowerShell's parameter binder handles
-    all argument parsing before the proxy sees them.
+    Invoke-PowerStubCommand declares no parameters. Everything after the stub and
+    command arrives in $args and is forwarded to the target, untouched, using the
+    call operator (&) with an array splat. Nothing is bound to pstb itself, so flags
+    such as -v, -c or -o always reach the target.
 
     PS1 TARGETS (.ps1 files)
     ------------------------
-    Named parameters: Captured by DynamicParam, forwarded via hashtable splatting.
-    Positional args: Captured by $RemainingArgs, forwarded via array splatting.
+    Named parameters (-Name x, -Count:5, -Force) and positional arguments are
+    forwarded by the same array splat; PowerShell remembers which elements were
+    parameter names. -Switch:$false is the one form splatting cannot carry, so
+    Invoke-CheckedCommand moves those pairs into a named splat.
     PowerShell's normal quoting and escaping rules apply at the call site.
 
     | To Pass This       | Use This                    | Example                     |
@@ -47,8 +48,7 @@
 
     EXE TARGETS (.exe files)
     ------------------------
-    Since no DynamicParam metadata exists for native commands, all arguments
-    go through $RemainingArgs and are forwarded as positional arguments.
+    All arguments are forwarded as they were typed.
     PowerShell handles quoting/escaping for the subprocess automatically.
 
     SPECIAL CHARACTERS REFERENCE
@@ -77,10 +77,12 @@
 
     KNOWN LIMITATIONS
     -----------------
-    1. Embedded newlines/carriage returns may cause issues in some scenarios
-    2. Null characters may cause unexpected behavior
-    3. Arguments that look like PowerShell parameter names (-Param) may be
-       consumed by PowerShell's binder if they match a dynamic parameter name
+    PowerShell changes these before pstb ever sees them, because pstb is a function
+    (tests/ParsingMatrix.tests.ps1 lists the affected calls):
+    1. A bare -- is removed, so 'git diff HEAD~1 -- file' loses the separator.
+       Quote it: '--'
+    2. For an EXE, -x:value is split ('-c:v' arrives as 'v') and an unquoted a,b,c
+       becomes three arguments. Quote them: '-c:v', 'a,b,c'
 
     RECOMMENDED PRACTICES
     ---------------------

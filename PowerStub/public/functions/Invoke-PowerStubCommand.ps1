@@ -10,17 +10,11 @@
   Supports virtual verbs (search, help, update) that perform special operations without
   mapping to actual command files.
 
-.PARAMETER Stub
-  The name of the stub containing the command. Required unless using virtual verbs.
-  Supports tab completion for registered stubs.
-
-.PARAMETER Command
-  The name of the command to execute within the stub. Required unless showing overview.
-  Supports tab completion for commands in the selected stub.
-  Supports dynamic parameters from the target command.
-
-.PARAMETER RemainingArgs
-  Arguments to pass to the target command. Captured from the command line and passed through unchanged.
+  This function deliberately declares no parameters. The first argument is the stub, the
+  second is the command, and everything after that is handed to the target exactly as typed.
+  (-Stub and -Command are still accepted by their full names, before the target's arguments.)
+  Tab completion for stubs, commands and the target's own parameters is provided by the
+  module's TabExpansion2 wrapper.
 
 .INPUTS
   None. You cannot pipe objects to this function.
@@ -51,150 +45,90 @@
 #>
 
 function Invoke-PowerStubCommand {
-    [CmdletBinding()]
-    param(
-        [parameter(Position = 0)] [string] $stub,
-        [parameter(Position = 1)] [string] $command,
-        # ValueFromRemainingArguments captures any positional arguments after stub and command
-        [parameter(DontShow = $true, ValueFromRemainingArguments = $true)] [object[]] $RemainingArgs
-    )
+    # NOT an advanced function, and no param block - on purpose.
+    #
+    # An advanced function always has the common parameters, and PowerShell matches every
+    # -flag against them and against the function's own parameters by prefix. For a proxy
+    # that is fatal: 'dotnet build -c Release' binds -c to -Command, 'curl -o file' fails as
+    # ambiguous (-OutVariable/-OutBuffer), and -v, -d, -e, -i, -p and -w are swallowed or
+    # rejected before any of this code runs. With no parameters, every argument arrives in
+    # $args untouched and is splatted to the target, which keeps named parameters
+    # (-Name x, -Count:5, -Force) working for script targets.
+    #
+    # tests/ParsingMatrix.tests.ps1 compares 300 calls through pstb with direct calls. Do not
+    # change how arguments flow here without checking that its agreement count does not drop.
 
-    DynamicParam {
-        # Get stub and command from PSBoundParameters (not variables - they don't exist yet during DynamicParam)
-        $stubValue = $PSBoundParameters['Stub']
-        $commandValue = $PSBoundParameters['Command']
-
-        # Only build dynamic params if both stub and command are provided
-        if ($stubValue -and $commandValue) {
-            $RuntimeParamDic = Get-PowerStubCommandDynamicParams $stubValue $commandValue
-            return $RuntimeParamDic
-        }
-
-        # Return empty dictionary if we don't have both values yet
-        return New-Object System.Management.Automation.RuntimeDefinedParameterDictionary
+    $invocation = Resolve-PowerStubInvocation -Tokens $args
+    $stub = if ($invocation.StubIndex -ge 0 -and $invocation.StubIndex -lt $args.Count) { [string]$args[$invocation.StubIndex] }
+    $command = if ($invocation.CommandIndex -ge 0 -and $invocation.CommandIndex -lt $args.Count) { [string]$args[$invocation.CommandIndex] }
+    # Slicing (rather than copying element by element) keeps each argument exactly as it was
+    # bound, including the marker PowerShell uses to splat '-Name' as a parameter name.
+    # Assign the slice directly: '$x = if (...) { $slice }' would unroll a one-element array
+    # into a scalar, and a string then gets splatted character by character.
+    $targetArgs = @()
+    if ($invocation.RestStart -lt $args.Count) {
+        $targetArgs = $args[$invocation.RestStart..($args.Count - 1)]
     }
 
-    begin {
-        Write-Debug "Invoke-PowerStubCommand Begin"
+    Sync-PowerStubConfiguration
+
+    if (!$stub) {
+        Show-PowerStubOverview
+        return
     }
 
-    process {
-        Write-Debug "Invoke-PowerStubCommand Process"
-    }
-
-    end {
-        Write-Debug "Invoke-PowerStubCommand Process"
-
-        Sync-PowerStubConfiguration
-
-        if (!$stub) {
-            Show-PowerStubOverview
-            return
-        }
-
-        # Virtual verb handling - these are reserved commands that don't map to script files
-        $virtualVerbs = @('search', 'help', 'update')
-        if ($virtualVerbs -contains $stub) {
-            switch ($stub) {
-                'search' {
-                    if ($command) {
-                        return Search-PowerStubCommands $command
-                    }
-                    else {
-                        throw "Usage: pstb search <query>"
-                    }
-                }
-                'help' {
-                    if ($command -and $RemainingArgs -and $RemainingArgs.Count -gt 0) {
-                        # pstb help <stub> <command>
-                        return Get-PowerStubCommandHelp -Stub $command -Command $RemainingArgs[0]
-                    }
-                    elseif ($command) {
-                        throw "Usage: pstb help <stub> <command>"
-                    }
-                    else {
-                        throw "Usage: pstb help <stub> <command>"
-                    }
-                }
-                'update' {
-                    Invoke-PowerStubUpdate -Command $command -RemainingArgs $RemainingArgs
-                    return
-                }
-            }
-        }
-
-        if (!$command) {
-            Show-PowerStubCommands $stub
-            return
-        }
-
-        # Check if stub is registered first
-        $stubs = Get-PowerStubConfigurationKey 'Stubs'
-        if (-not $stubs -or -not $stubs.ContainsKey($stub)) {
-            $registeredStubs = if ($stubs) { ($stubs.Keys -join ', ') } else { '(none)' }
-            Throw "Stub '$stub' is not registered. Registered stubs: $registeredStubs`n`nTo register: New-PowerStub -Name '$stub' -Path '<path-to-stub-folder>'"
-        }
-
-        $commandObj = Get-PowerStubCommand $stub $command
-        if (!$commandObj) {
-            $stubConfig = $stubs[$stub]
-            $stubPath = Get-PowerStubPath -StubConfig $stubConfig
-            Throw "Command '$command' not found in stub '$stub'.`n`nStub path: $stubPath`nExpected: $stubPath\Commands\$command.ps1 or $stubPath\Commands\$command\$command.ps1"
-        }
-
-        $cmd = $commandObj.Path
-
-        # Collect dynamic parameters (bound params that aren't our static or common params)
-        $forwardParams = @{}
-        $skipParams = @('Stub', 'Command', 'RemainingArgs')
-        $commonParamsList = @('Verbose', 'Debug', 'ErrorAction', 'WarningAction', 'InformationAction',
-            'ErrorVariable', 'WarningVariable', 'InformationVariable', 'OutVariable', 'OutBuffer',
-            'PipelineVariable', 'ProgressAction', 'WhatIf', 'Confirm')
-        foreach ($key in $PSBoundParameters.Keys) {
-            if ($key -notin $skipParams -and $key -notin $commonParamsList) {
-                $forwardParams[$key] = $PSBoundParameters[$key]
-            }
-        }
-
-        # Parse RemainingArgs to extract named parameters that match the target command.
-        # This handles the case where callers use array splatting (& pstb @args) which
-        # passes all elements as positional, preventing DynamicParam from capturing named params.
-        $effectivePositionalArgs = @()
-        if ($RemainingArgs -and $RemainingArgs.Count -gt 0) {
-            $cmdParams = $commandObj.Parameters
-            $i = 0
-            while ($i -lt $RemainingArgs.Count) {
-                $arg = $RemainingArgs[$i]
-                if ($arg -is [string] -and $arg.StartsWith('-') -and $arg.Length -gt 1) {
-                    $paramName = $arg.Substring(1)
-                    if ($cmdParams.ContainsKey($paramName) -and -not $forwardParams.ContainsKey($paramName)) {
-                        $paramType = $cmdParams[$paramName].ParameterType
-                        if ($paramType -eq [System.Management.Automation.SwitchParameter]) {
-                            $forwardParams[$paramName] = $true
-                        }
-                        else {
-                            $i++
-                            if ($i -lt $RemainingArgs.Count) {
-                                $forwardParams[$paramName] = $RemainingArgs[$i]
-                            }
-                        }
-                    }
-                    else {
-                        $effectivePositionalArgs += $arg
-                    }
+    # Virtual verb handling - these are reserved commands that don't map to script files
+    $virtualVerbs = @('search', 'help', 'update')
+    if ($virtualVerbs -contains $stub) {
+        switch ($stub) {
+            'search' {
+                if ($command) {
+                    return Search-PowerStubCommands $command
                 }
                 else {
-                    $effectivePositionalArgs += $arg
+                    throw "Usage: pstb search <query>"
                 }
-                $i++
+            }
+            'help' {
+                if ($command -and $targetArgs.Count -gt 0) {
+                    # pstb help <stub> <command>
+                    return Get-PowerStubCommandHelp -Stub $command -Command $targetArgs[0]
+                }
+                else {
+                    throw "Usage: pstb help <stub> <command>"
+                }
+            }
+            'update' {
+                Invoke-PowerStubUpdate -Command $command -RemainingArgs $targetArgs
+                return
             }
         }
-
-        Write-Debug "Command path: $cmd"
-        Write-Debug "Dynamic params: $($forwardParams.Keys -join ', ')"
-        Write-Debug "Remaining args: $($effectivePositionalArgs -join ', ')"
-
-        Write-Host "Invoking $cmd"
-        Invoke-CheckedCommandWithParams -command $cmd -namedParams $forwardParams -positionalArgs $effectivePositionalArgs
     }
+
+    if (!$command) {
+        Show-PowerStubCommands $stub
+        return
+    }
+
+    # Check if stub is registered first
+    $stubs = Get-PowerStubConfigurationKey 'Stubs'
+    if (-not $stubs -or -not $stubs.ContainsKey($stub)) {
+        $registeredStubs = if ($stubs) { ($stubs.Keys -join ', ') } else { '(none)' }
+        Throw "Stub '$stub' is not registered. Registered stubs: $registeredStubs`n`nTo register: New-PowerStub -Name '$stub' -Path '<path-to-stub-folder>'"
+    }
+
+    $commandObj = Get-PowerStubCommand $stub $command
+    if (!$commandObj) {
+        $stubConfig = $stubs[$stub]
+        $stubPath = Get-PowerStubPath -StubConfig $stubConfig
+        Throw "Command '$command' not found in stub '$stub'.`n`nStub path: $stubPath`nExpected: $stubPath\Commands\$command.ps1 or $stubPath\Commands\$command\$command.ps1"
+    }
+
+    $cmd = $commandObj.Path
+
+    Write-Debug "Command path: $cmd"
+    Write-Debug "Target args: $($targetArgs -join ', ')"
+
+    Write-Host "Invoking $cmd"
+    Invoke-CheckedCommand $cmd @targetArgs
 }

@@ -31,7 +31,7 @@ pstb DevOps deploy-app -Environment prod
 
 - **Namespace Organization**: Group related tools under logical stub names
 - **Tab Completion**: Full IntelliSense for stub names, commands, and parameters
-- **Dynamic Parameters**: Automatically inherits parameters from target commands
+- **Transparent Arguments**: Everything after the command is passed to the target exactly as typed, so tool flags like `-c`, `-o` or `-v` always reach it
 - **Multi-format Support**: Works with `.ps1` scripts and `.exe` executables
 - **Lifecycle Prefixes**: Built-in support for `alpha.*` and `beta.*` command stages
 - **Zero PATH Pollution**: Single alias (`pstb`) provides access to all your tools

@@ -64,83 +64,61 @@ Write-Verbose "Creating Invoke-PowerStubCommand alias as: $alias"
 New-Alias $alias Invoke-PowerStubCommand
 Export-ModuleMember -Alias $alias
 
-#setup the Invoke-PowerStubCommand argument completer for the STUB parameter
-Write-Verbose "Setting up argument completer for Invoke-PowerStubCommand STUB parameter"
-$StubCompleter = {
-    param($commandName, $parameterName, $stringMatch, $commandAst, $fakeBoundParameters)
+# Tab completion.
+#
+# Invoke-PowerStubCommand declares no parameters, so that arguments meant for the target are
+# never bound to pstb (see the comment in that function). PowerShell therefore has nothing to
+# complete from, and Register-ArgumentCompleter cannot fill the gap: it is not consulted for
+# a partly typed '-Name' on a function. So completion is supplied by wrapping TabExpansion2,
+# the function every host calls for completion.
+#
+# The wrapper only answers for pstb, Invoke-PowerStubCommand and direct aliases. For every
+# other line, and whenever anything goes wrong, it calls the original unchanged.
+$Script:InvokeAlias = $alias
+$Script:OriginalTabExpansion2 = (Get-Command TabExpansion2 -CommandType Function -ErrorAction SilentlyContinue).ScriptBlock
+if ($Script:OriginalTabExpansion2) {
+    Write-Verbose "Wrapping TabExpansion2 for PowerStub completion"
+    Set-Item -Path function:global:TabExpansion2 -Value {
+        [CmdletBinding(DefaultParameterSetName = 'ScriptInputSet')]
+        [OutputType([System.Management.Automation.CommandCompletion])]
+        param(
+            [Parameter(ParameterSetName = 'ScriptInputSet', Mandatory = $true, Position = 0)]
+            [AllowEmptyString()]
+            [string] $inputScript,
 
-    # Virtual verbs (reserved commands)
-    $virtualVerbs = @('search', 'help', 'update')
+            [Parameter(ParameterSetName = 'ScriptInputSet', Position = 1)]
+            [int] $cursorColumn = $inputScript.Length,
 
-    Sync-PowerStubConfiguration
-    $stubs = Get-PowerStubConfigurationKey 'Stubs'
-    $allOptions = @($virtualVerbs) + @($stubs.Keys)
+            [Parameter(ParameterSetName = 'AstInputSet', Mandatory = $true, Position = 0)]
+            [System.Management.Automation.Language.Ast] $ast,
 
-    if (!$stringMatch) { return $allOptions }
+            [Parameter(ParameterSetName = 'AstInputSet', Mandatory = $true, Position = 1)]
+            [System.Management.Automation.Language.Token[]] $tokens,
 
-    $PartialMatches = @($allOptions | Where-Object { $_ -like "$stringMatch*" })
-    return $PartialMatches
-}
+            [Parameter(ParameterSetName = 'AstInputSet', Mandatory = $true, Position = 2)]
+            [System.Management.Automation.Language.IScriptPosition] $positionOfCursor,
 
-# Register for both the function and the alias
-Register-ArgumentCompleter -CommandName Invoke-PowerStubCommand -ParameterName Stub -ScriptBlock $StubCompleter
-Register-ArgumentCompleter -CommandName $alias -ParameterName Stub -ScriptBlock $StubCompleter
+            [Parameter(ParameterSetName = 'ScriptInputSet', Position = 2)]
+            [Parameter(ParameterSetName = 'AstInputSet', Position = 3)]
+            [Hashtable] $options = $null
+        )
 
-#setup the Invoke-PowerStubCommand argument completer for the COMMAND parameter
-Write-Verbose "Setting up argument completer for Invoke-PowerStubCommand COMMAND parameter"
-$CommandCompleter = {
-    param($commandName, $parameterName, $stringMatch, $commandAst, $fakeBoundParameters)
+        try {
+            $text = if ($PSCmdlet.ParameterSetName -eq 'AstInputSet') { $ast.Extent.Text } else { $inputScript }
+            $cursor = if ($PSCmdlet.ParameterSetName -eq 'AstInputSet') { $positionOfCursor.Offset } else { $cursorColumn }
 
-    $stub = $fakeBoundParameters['Stub']
-    if (!$stub) { return @() }
-
-    # Handle virtual verb completions
-    if ($stub -eq 'help') {
-        # For 'help' verb, the command parameter should show stub names
-        Sync-PowerStubConfiguration
-        $stubs = Get-PowerStubConfigurationKey 'Stubs'
-        $stubNames = @($stubs.Keys)
-        if (!$stringMatch) { return $stubNames }
-        return @($stubNames | Where-Object { $_ -like "$stringMatch*" })
-    }
-
-    if ($stub -eq 'search') {
-        # For 'search' verb, no completion (user types query)
-        return @()
-    }
-
-    if ($stub -eq 'update') {
-        # For 'update' verb, the command parameter should show stub names (or empty for all)
-        Sync-PowerStubConfiguration
-        $stubs = Get-PowerStubConfigurationKey 'Stubs'
-        $stubNames = @($stubs.Keys)
-        if (!$stringMatch) { return $stubNames }
-        return @($stubNames | Where-Object { $_ -like "$stringMatch*" })
-    }
-
-    $commands = @(Find-PowerStubCommands $stub)
-    if (!$commands) { return @() }
-
-    # Get base names and strip alpha./beta. prefixes for user-friendly completion
-    $commandNames = @($commands | ForEach-Object {
-        $name = $_.BaseName
-        # Strip alpha. or beta. prefix if present
-        if ($name -match '^(alpha|beta)\.(.+)$') {
-            $Matches[2]
-        } else {
-            $name
+            $completion = Get-PowerStubCompletion -InputScript $text -CursorColumn $cursor -Options $options
+            if ($completion) {
+                return $completion
+            }
         }
-    } | Select-Object -Unique)
+        catch {
+            Write-Debug "PowerStub completion failed, using the default: $_"
+        }
 
-    if (!$stringMatch) { return $commandNames }
-
-    $PartialMatches = $commandNames | Where-Object { $_ -like "$stringMatch*" }
-    return $PartialMatches
+        & $Script:OriginalTabExpansion2 @PSBoundParameters
+    }
 }
-
-# Register for both the function and the alias
-Register-ArgumentCompleter -CommandName Invoke-PowerStubCommand -ParameterName Command -ScriptBlock $CommandCompleter
-Register-ArgumentCompleter -CommandName $alias -ParameterName Command -ScriptBlock $CommandCompleter
 
 # Ensure PSReadLine Tab completion is properly configured
 # PSReadLine is required for interactive tab completion in modern PowerShell terminals
@@ -205,6 +183,12 @@ if ($directAliases) {
 
 # Cleanup direct aliases on module removal
 $MyInvocation.MyCommand.ScriptBlock.Module.OnRemove = {
+    # Put the original TabExpansion2 back, unless something else has replaced ours since
+    $currentTabExpansion = Get-Command TabExpansion2 -CommandType Function -ErrorAction SilentlyContinue
+    if ($Script:OriginalTabExpansion2 -and $currentTabExpansion.ScriptBlock.Module.Name -eq 'PowerStub') {
+        Set-Item -Path function:global:TabExpansion2 -Value $Script:OriginalTabExpansion2
+    }
+
     # Only remove the functions this module created, never a same-named command of the user's
     foreach ($aliasName in $Script:RegisteredDirectAliases) {
         # Note: Remove-Item does nothing for a 'function:global:' path; the unqualified path works

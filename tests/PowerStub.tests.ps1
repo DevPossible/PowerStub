@@ -84,9 +84,9 @@ Describe "PowerStub Module" {
         It "Should not export private functions" {
             $privateFunctions = @(
                 'Find-PowerStubCommands'
-                'Get-PowerStubCommandDynamicParams'
+                'Get-PowerStubCompletion'
                 'Invoke-CheckedCommand'
-                'New-DynamicParam'
+                'Resolve-PowerStubInvocation'
                 'ConvertTo-Hashtable'
                 'Get-PowerStubConfigurationDefaults'
                 'Get-PowerStubConfigurationKey'
@@ -549,43 +549,6 @@ Describe "Dynamic Parameters and Tab Completion" {
         Disable-PowerStubBetaCommands
     }
 
-    Context "Get-PowerStubCommandDynamicParams (via InModuleScope)" {
-        It "Should return empty dictionary when stub is missing" {
-            $result = InModuleScope PowerStub {
-                Get-PowerStubCommandDynamicParams -stub "" -command "test"
-            }
-            $result | Should -BeOfType [System.Management.Automation.RuntimeDefinedParameterDictionary]
-            $result.Count | Should -Be 0
-        }
-
-        It "Should return empty dictionary when command is missing" {
-            $result = InModuleScope PowerStub {
-                Get-PowerStubCommandDynamicParams -stub "SampleStub" -command ""
-            }
-            $result | Should -BeOfType [System.Management.Automation.RuntimeDefinedParameterDictionary]
-            $result.Count | Should -Be 0
-        }
-
-        It "Should return parameters for valid command" {
-            $result = InModuleScope PowerStub {
-                Get-PowerStubCommandDynamicParams -stub "SampleStub" -command "deploy"
-            }
-            $result | Should -BeOfType [System.Management.Automation.RuntimeDefinedParameterDictionary]
-            $result.Count | Should -BeGreaterThan 0
-            $result.Keys | Should -Contain "Environment"
-            $result.Keys | Should -Contain "Version"
-        }
-
-        It "Should return empty dictionary for non-existent command (no warning)" {
-            # This tests that tab completion doesn't spam warnings
-            $result = InModuleScope PowerStub {
-                Get-PowerStubCommandDynamicParams -stub "SampleStub" -command "nonexistent" -WarningAction SilentlyContinue
-            }
-            $result | Should -BeOfType [System.Management.Automation.RuntimeDefinedParameterDictionary]
-            $result.Count | Should -Be 0
-        }
-    }
-
     Context "Argument Completers" {
         It "Should complete stub names" {
             # Test the stub completer directly
@@ -631,18 +594,23 @@ Describe "Dynamic Parameters and Tab Completion" {
             $cmd | Should -Not -BeNullOrEmpty
         }
 
-        It "Should have Stub and Command as static parameters" {
+        It "Should declare no parameters, so nothing meant for the target binds to pstb" {
             $cmd = Get-Command -Name 'Invoke-PowerStubCommand'
-            $cmd.Parameters.Keys | Should -Contain 'Stub'
-            $cmd.Parameters.Keys | Should -Contain 'Command'
+            $cmd.CmdletBinding | Should -Be $false
+            $cmd.Parameters.Count | Should -Be 0
+        }
+
+        It "Should still accept -Stub and -Command by name" {
+            $output = Invoke-PowerStubCommand -Stub SampleStub -Command deploy -Environment "named" 6>$null
+            ($output -join ' ') | Should -Match 'named'
         }
     }
 
     Context "Tab Completion for Dynamic Parameters" {
         It "Should include dynamic parameters in tab completion" {
-            # Use CompleteInput to simulate tab completion
+            # Hosts complete through the TabExpansion2 function, which the module wraps
             $input = 'Invoke-PowerStubCommand -Stub SampleStub -Command deploy -'
-            $completions = [System.Management.Automation.CommandCompletion]::CompleteInput($input, $input.Length, $null)
+            $completions = TabExpansion2 -inputScript $input -cursorColumn $input.Length
 
             $completionTexts = @($completions.CompletionMatches | Select-Object -ExpandProperty CompletionText)
 
@@ -652,7 +620,7 @@ Describe "Dynamic Parameters and Tab Completion" {
 
         It "Should include dynamic parameters when using alias" {
             $input = 'pstb SampleStub deploy -'
-            $completions = [System.Management.Automation.CommandCompletion]::CompleteInput($input, $input.Length, $null)
+            $completions = TabExpansion2 -inputScript $input -cursorColumn $input.Length
 
             $completionTexts = @($completions.CompletionMatches | Select-Object -ExpandProperty CompletionText)
 
@@ -662,7 +630,7 @@ Describe "Dynamic Parameters and Tab Completion" {
 
         It "Should not break other commands completion" {
             $input = 'Get-ChildItem -'
-            $completions = [System.Management.Automation.CommandCompletion]::CompleteInput($input, $input.Length, $null)
+            $completions = TabExpansion2 -inputScript $input -cursorColumn $input.Length
 
             $completionTexts = @($completions.CompletionMatches | Select-Object -ExpandProperty CompletionText)
 
@@ -819,7 +787,7 @@ Describe "New-PowerStubDirectAlias" {
 
         It "Should complete dynamic parameters for commands" {
             $input = 'ts deploy -'
-            $completions = [System.Management.Automation.CommandCompletion]::CompleteInput($input, $input.Length, $null)
+            $completions = TabExpansion2 -inputScript $input -cursorColumn $input.Length
 
             $completionTexts = @($completions.CompletionMatches | Select-Object -ExpandProperty CompletionText)
             $completionTexts | Should -Contain '-Environment'
@@ -988,7 +956,7 @@ Describe "Virtual Verbs" {
 
         It "Should show stub names when completing help command" {
             $input = 'pstb help '
-            $completions = [System.Management.Automation.CommandCompletion]::CompleteInput($input, $input.Length, $null)
+            $completions = TabExpansion2 -inputScript $input -cursorColumn $input.Length
             $completionTexts = @($completions.CompletionMatches | Select-Object -ExpandProperty CompletionText)
             $completionTexts | Should -Contain 'SampleStub'
         }
