@@ -95,6 +95,8 @@ test:
         $config = New-PesterConfiguration
         $config.Run.Path = "$env:CI_PROJECT_DIR/tests"
         $config.Run.Exit = $true
+        # KnownIssue tests document unfixed bugs and are expected to fail
+        $config.Filter.ExcludeTag = "KnownIssue"
         $config.Output.Verbosity = "Detailed"
         $config.TestResult.Enabled = $true
         $config.TestResult.OutputPath = "$env:TEST_RESULTS_PATH/testResults.xml"

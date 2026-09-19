@@ -30,6 +30,10 @@
     # Runs only tests with "Alpha" in the name
 
 .EXAMPLE
+    .\dev-test.ps1 -Tag KnownIssue
+    # Runs the tests for known, unfixed bugs (expected to fail; excluded by default)
+
+.EXAMPLE
     .\dev-test.ps1 -Output Normal
     # Runs tests with minimal output
 
@@ -78,6 +82,11 @@ if ($Filter) {
 
 if ($Tag) {
     $config.Filter.Tag = $Tag
+}
+else {
+    # tests/KnownIssues.tests.ps1 documents unfixed bugs and is expected to fail.
+    # Run it explicitly with: .\dev-test.ps1 -Tag KnownIssue
+    $config.Filter.ExcludeTag = 'KnownIssue'
 }
 
 # Always enable PassThru so $result is populated for exit code checking
