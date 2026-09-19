@@ -222,16 +222,6 @@ Describe "Argument Passing - PS1 Targets" {
             $result.Args[0].Value | Should -Be "hello world"
         }
 
-        It "Should handle empty string" {
-            $output = pstb SampleStub arg-echo ""
-            $result = Get-ArgEchoResult $output
-
-            if ($result.ArgCount -eq 0) {
-                Set-ItResult -Skipped -Because "Empty string not captured on this platform"
-            } else {
-                $result.ArgCount | Should -BeGreaterThan 0
-            }
-        }
 
         It "Should pass named string parameter to arg-dump" {
             $output = pstb SampleStub arg-dump -StringParam "test value"
@@ -278,15 +268,7 @@ Describe "Argument Passing - PS1 Targets" {
             # Note: Variable expansion depends on how $myinvocation.line captures the command
             # Variables are expanded by PowerShell before the command runs, so this should work
             $result.ArgCount | Should -Be 1
-            # If the variable was expanded, we get the value; if not, we get empty or literal
-            if ($result.Args[0].Value -eq "expanded_value") {
-                $result.Args[0].Value | Should -Be "expanded_value"
-            }
-            else {
-                # Document: script-scoped variables may not expand via raw line extraction
-                # This is a known limitation when using $myinvocation.line parsing
-                Set-ItResult -Skipped -Because "Script-scoped variable expansion has platform-dependent behavior"
-            }
+            $result.Args[0].Value | Should -Be "expanded_value"
         }
 
         It "Should expand subexpression" {
@@ -311,16 +293,8 @@ Describe "Argument Passing - PS1 Targets" {
             $output = pstb SampleStub arg-echo $arr
             $result = Get-ArgEchoResult $output
 
-            # Document actual behavior:
-            # Array variables in local scope may not expand through raw line extraction
-            # This is a known limitation of the $myinvocation.line approach
-            if ($result.ArgCount -ge 1 -and $result.Args[0].Value -match 'alpha|beta') {
-                # Arrays expanded - good
-                $result.ArgCount | Should -BeGreaterOrEqual 1
-            }
-            else {
-                Set-ItResult -Skipped -Because "Array variable expansion has platform-dependent behavior"
-            }
+            # Both elements must reach the command, whether as one array or as separate args
+            ($result.Args | ForEach-Object { $_.Value }) -join ' ' | Should -Be 'alpha beta'
         }
 
         It "Should handle null variable" {
@@ -398,28 +372,13 @@ Describe "Argument Passing - PS1 Targets" {
             $result.Args[0].Value | Should -Be 'Hello $name'
         }
 
-        It "Should handle backtick-n for newline - documents limitation" {
+        It "Should pass an embedded newline through intact" {
             $output = pstb SampleStub arg-echo "Line1`nLine2"
             $result = Get-ArgEchoResult $output
 
-            # Note: Embedded newlines in arguments cause parsing issues
-            # The raw command line extraction via $myinvocation.line may not
-            # properly handle multi-line arguments
-            # This is a known limitation - document it rather than assert failure
-            if ($result.ArgCount -ge 1) {
-                # If we got any args, check the content
-                $allValues = ($result.Args | ForEach-Object { $_.Value }) -join ' '
-                if ($allValues -match "Line") {
-                    $allValues | Should -Match "Line"
-                }
-                else {
-                    # Newline caused empty/broken parsing - this is the limitation
-                    Set-ItResult -Skipped -Because "Embedded newlines may cause parsing issues"
-                }
-            }
-            else {
-                Set-ItResult -Skipped -Because "Embedded newlines are a known parsing limitation"
-            }
+            # The value spans two output lines, so check the raw output rather than the per-line parser
+            $result.ArgCount | Should -Be 1
+            ($output -join "`n") | Should -Match 'ARG\[0\]:String:Line1\r?\nLine2'
         }
 
         It "Should handle mixed quotes" {
@@ -462,16 +421,6 @@ Describe "Argument Passing - PS1 Targets" {
             $result.Args[0].Value | Should -Be '`n is a newline'
         }
 
-        It "Should handle empty single-quoted string" {
-            $output = pstb SampleStub arg-echo ''
-            $result = Get-ArgEchoResult $output
-
-            if ($result.ArgCount -eq 0) {
-                Set-ItResult -Skipped -Because "Empty strings not captured on this platform"
-            } else {
-                $result.ArgCount | Should -BeGreaterThan 0
-            }
-        }
     }
 
     Context "Quote Handling - Double Quotes" {
@@ -741,28 +690,19 @@ Describe "Argument Passing - EXE Targets" {
     BeforeAll {
         Import-PowerStubConfiguration -Reset
 
-        # Create a temporary stub with EXE symlinks
+        # Create a temporary stub with EXE commands
         $script:ExeStubPath = Join-Path ([System.IO.Path]::GetTempPath()) "PowerStubExeTest_$(Get-Random)"
         $script:ExeCommandsPath = Join-Path $script:ExeStubPath 'Commands'
 
         New-Item -Path $script:ExeCommandsPath -ItemType Directory -Force | Out-Null
 
-        # Create symlinks to safe Windows EXEs
-        # Note: mklink requires admin or developer mode on Windows
-        try {
-            # hostname.exe - simple, no args needed
-            cmd /c "mklink `"$($script:ExeCommandsPath)\hostname.exe`" `"$env:SystemRoot\System32\HOSTNAME.EXE`"" 2>$null
-
-            # findstr.exe - good for testing arg patterns
-            cmd /c "mklink `"$($script:ExeCommandsPath)\findstr.exe`" `"$env:SystemRoot\System32\findstr.exe`"" 2>$null
-
-            # where.exe - useful for testing
-            cmd /c "mklink `"$($script:ExeCommandsPath)\where.exe`" `"$env:SystemRoot\System32\where.exe`"" 2>$null
-
-            $script:ExeLinksCreated = $true
-        }
-        catch {
-            $script:ExeLinksCreated = $false
+        # Copy safe Windows EXEs into the stub (copies need no symlink privilege).
+        # These tests are Windows-only; -Skip is evaluated at discovery, so it must not
+        # depend on anything set in BeforeAll.
+        if ($IsWindows) {
+            foreach ($exe in 'hostname.exe', 'findstr.exe', 'where.exe') {
+                Copy-Item -LiteralPath (Join-Path $env:SystemRoot "System32\$exe") -Destination $script:ExeCommandsPath
+            }
         }
 
         New-PowerStub -Name "ExeStub" -Path $script:ExeStubPath -Force
@@ -776,7 +716,7 @@ Describe "Argument Passing - EXE Targets" {
     }
 
     Context "Basic EXE Execution" {
-        It "Should execute hostname.exe and return output" -Skip:(-not $script:ExeLinksCreated) {
+        It "Should execute hostname.exe and return output" -Skip:(-not $IsWindows) {
             $output = pstb ExeStub hostname
             $output | Should -Not -BeNullOrEmpty
             $output | Should -Be $env:COMPUTERNAME
@@ -784,7 +724,7 @@ Describe "Argument Passing - EXE Targets" {
     }
 
     Context "EXE Argument Passthrough" {
-        It "Should pass arguments to findstr.exe" -Skip:(-not $script:ExeLinksCreated) {
+        It "Should pass arguments to findstr.exe" -Skip:(-not $IsWindows) {
             # Create a temp file for testing
             $tempFile = Join-Path ([System.IO.Path]::GetTempPath()) "findstr_test_$(Get-Random).txt"
             "line one`nline two`nline three" | Set-Content $tempFile
@@ -798,7 +738,7 @@ Describe "Argument Passing - EXE Targets" {
             }
         }
 
-        It "Should pass /i flag to findstr for case-insensitive search" -Skip:(-not $script:ExeLinksCreated) {
+        It "Should pass /i flag to findstr for case-insensitive search" -Skip:(-not $IsWindows) {
             $tempFile = Join-Path ([System.IO.Path]::GetTempPath()) "findstr_test_$(Get-Random).txt"
             "line one`nline TWO`nline three" | Set-Content $tempFile
 
@@ -811,14 +751,14 @@ Describe "Argument Passing - EXE Targets" {
             }
         }
 
-        It "Should pass where.exe path argument" -Skip:(-not $script:ExeLinksCreated) {
+        It "Should pass where.exe path argument" -Skip:(-not $IsWindows) {
             $output = pstb ExeStub where "cmd.exe"
             $output | Should -Match "cmd.exe"
         }
     }
 
     Context "EXE with Complex Arguments" {
-        It "Should handle quoted paths with spaces for EXE" -Skip:(-not $script:ExeLinksCreated) {
+        It "Should handle quoted paths with spaces for EXE" -Skip:(-not $IsWindows) {
             # Test that paths with spaces work
             $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "PowerStub Test Dir $(Get-Random)"
             $tempFile = Join-Path $tempDir "test.txt"
@@ -1104,22 +1044,16 @@ Describe "Argument Passing - Edge Cases" {
             $output = pstb SampleStub arg-echo "line`rreturn"
             $result = Get-ArgEchoResult $output
 
-            if ($result.ArgCount -eq 0) {
-                Set-ItResult -Skipped -Because "Carriage return handling varies by platform"
-            } else {
-                $result.ArgCount | Should -BeGreaterThan 0
-            }
+            $result.ArgCount | Should -Be 1
+            $result.Args[0].Value | Should -Match '^line\r?return$'
         }
 
         It "Should handle escape sequence for null" {
             $output = pstb SampleStub arg-echo "has`0null"
             $result = Get-ArgEchoResult $output
 
-            if ($result.ArgCount -eq 0) {
-                Set-ItResult -Skipped -Because "Null character handling varies by platform"
-            } else {
-                $result.ArgCount | Should -BeGreaterThan 0
-            }
+            $result.ArgCount | Should -Be 1
+            $result.Args[0].Value | Should -Be "has`0null"
         }
 
         It "Should handle escape sequence for alert/bell" {
