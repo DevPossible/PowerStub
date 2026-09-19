@@ -61,6 +61,7 @@ function New-PowerStubDirectAlias {
     }
 
     # Check if function already exists
+    $wasOurAlias = $Script:RegisteredDirectAliases -contains $AliasName
     $existingCmd = Get-Command $AliasName -ErrorAction SilentlyContinue
     if ($existingCmd -and -not $Force) {
         throw "A command named '$AliasName' already exists. Use -Force to overwrite."
@@ -94,15 +95,29 @@ function New-PowerStubDirectAlias {
     # Tab completion for the alias comes from the module's TabExpansion2 wrapper,
     # which recognizes every name in $Script:RegisteredDirectAliases.
 
-    # Store in config for re-registration on module load
+    # Store in config for re-registration on module load.
+    # If -Force was used to take a name that belongs to another command (for example a
+    # 'devops.bat' on the PATH), remember that consent: module load re-creates such an alias,
+    # but never lets a name that merely appears in the config file shadow a command.
+    $shadowsOtherCommand = $Force -and $existingCmd -and -not $wasOurAlias
     $directAliases = Get-PowerStubConfigurationKey 'DirectAliases'
-    if (-not $directAliases -or $directAliases[$AliasName] -ne $Stub) {
+    $forcedAliases = @(Get-PowerStubConfigurationKey 'ForcedDirectAliases')
+    $needsSave = -not $directAliases -or $directAliases[$AliasName] -ne $Stub -or
+        ($shadowsOtherCommand -and $forcedAliases -notcontains $AliasName)
+    if ($needsSave) {
         # Add only this alias so other sessions' aliases are kept
         Update-PowerStubConfiguration {
             if (-not $Script:PSTBSettings['DirectAliases']) {
                 $Script:PSTBSettings['DirectAliases'] = @{}
             }
             $Script:PSTBSettings['DirectAliases'][$AliasName] = $Stub
+
+            if ($shadowsOtherCommand) {
+                $forced = @($Script:PSTBSettings['ForcedDirectAliases']) | Where-Object { $_ }
+                if ($forced -notcontains $AliasName) {
+                    $Script:PSTBSettings['ForcedDirectAliases'] = @($forced) + $AliasName
+                }
+            }
         }
     }
 

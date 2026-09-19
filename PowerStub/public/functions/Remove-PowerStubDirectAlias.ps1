@@ -46,6 +46,7 @@ function Remove-PowerStubDirectAlias {
         if ($Script:PSTBSettings['DirectAliases']) {
             $Script:PSTBSettings['DirectAliases'].Remove($AliasName)
         }
+        $Script:PSTBSettings['ForcedDirectAliases'] = @($Script:PSTBSettings['ForcedDirectAliases'] | Where-Object { $_ -and $_ -ne $AliasName })
     }
 
     Write-Verbose "Removed direct alias '$AliasName' from configuration"

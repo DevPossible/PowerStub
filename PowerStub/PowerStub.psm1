@@ -166,8 +166,10 @@ if ($directAliases) {
         $stubs = Get-PowerStubConfigurationKey 'Stubs'
         if ($stubs.Keys -contains $stubName) {
             try {
-                # No -Force: a name from the config file must never silently replace an existing command
-                New-PowerStubDirectAlias -AliasName $aliasName -Stub $stubName -ErrorAction Stop | Out-Null
+                # A name from the config file must never silently replace an existing command,
+                # unless the user created that alias with -Force, which is recorded as consent.
+                $userForced = @(Get-PowerStubConfigurationKey 'ForcedDirectAliases') -contains $aliasName
+                New-PowerStubDirectAlias -AliasName $aliasName -Stub $stubName -Force:$userForced -ErrorAction Stop | Out-Null
                 Write-Verbose "Registered direct alias '$aliasName' for stub '$stubName'"
             } catch {
                 Write-Warning "Could not register direct alias '$aliasName': $_"

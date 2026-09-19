@@ -47,6 +47,7 @@ function Remove-PowerStub {
                 $directAliases.Remove($aliasName)
                 $aliasName
             }
+            $Script:PSTBSettings['ForcedDirectAliases'] = @($Script:PSTBSettings['ForcedDirectAliases'] | Where-Object { $_ -and $directAliases.ContainsKey($_) })
         }
     }
 

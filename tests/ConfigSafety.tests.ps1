@@ -197,6 +197,42 @@ Describe "Direct alias safety" {
         (Get-Command pwsh).CommandType | Should -Be 'Application'
     }
 
+    It "ImportModule_WithAliasTheUserForcedOverAnExistingCommand_RecreatesIt" {
+        # The user knowingly shadows a real command ('where' is reserved, so use another application)
+        $app = (Get-Command -CommandType Application | Where-Object { $_.Name -match '^[a-zA-Z][a-zA-Z0-9_-]*\.exe$' } | Select-Object -First 1)
+        $aliasName = [System.IO.Path]::GetFileNameWithoutExtension($app.Name)
+        Import-PowerStubConfiguration -Reset
+        New-PowerStub -Name 'SampleStub' -Path $script:SampleStubRoot
+
+        try {
+            New-PowerStubDirectAlias -AliasName $aliasName -Stub 'SampleStub' -Force | Out-Null
+            (Get-PowerStubConfiguration)['ForcedDirectAliases'] | Should -Contain $aliasName
+
+            Import-Module $script:ModulePath -Force -WarningVariable loadWarnings -WarningAction SilentlyContinue
+
+            $loadWarnings | Should -BeNullOrEmpty
+            (Get-Command $aliasName).CommandType | Should -Be 'Function'
+        }
+        finally {
+            Remove-PowerStubDirectAlias -AliasName $aliasName -ErrorAction SilentlyContinue
+        }
+
+        (Get-PowerStubConfiguration)['ForcedDirectAliases'] | Should -Not -Contain $aliasName
+        (Get-Command $aliasName).CommandType | Should -Be 'Application'
+    }
+
+    It "ImportModule_WithForcedAlias_DoesNotWriteTheConfigFile" {
+        Import-PowerStubConfiguration -Reset
+        New-PowerStub -Name 'SampleStub' -Path $script:SampleStubRoot
+        New-PowerStubDirectAlias -AliasName 'pstbforced' -Stub 'SampleStub' -Force | Out-Null
+        $before = (Get-Item -LiteralPath $script:ConfigFile).LastWriteTimeUtc
+        Start-Sleep -Milliseconds 50
+
+        Import-Module $script:ModulePath -Force
+
+        (Get-Item -LiteralPath $script:ConfigFile).LastWriteTimeUtc | Should -Be $before
+    }
+
     It "RemovePowerStub_WithDirectAlias_RemovesAliasFromConfigAndSession" {
         Import-PowerStubConfiguration -Reset
         New-PowerStub -Name 'AliasedStub' -Path $script:SampleStubRoot
