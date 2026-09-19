@@ -84,9 +84,9 @@ if ($Tag) {
     $config.Filter.Tag = $Tag
 }
 else {
-    # tests/KnownIssues.tests.ps1 documents unfixed bugs and is expected to fail.
-    # Run it explicitly with: .\dev-test.ps1 -Tag KnownIssue
-    $config.Filter.ExcludeTag = 'KnownIssue'
+    # tests/KnownIssues.tests.ps1 and tests/ParsingMatrix.tests.ps1 document unfixed bugs and
+    # are expected to fail. Run them explicitly with: .\dev-test.ps1 -Tag KnownIssue (or ParsingMatrix)
+    $config.Filter.ExcludeTag = 'KnownIssue', 'ParsingMatrix'
 }
 
 # Always enable PassThru so $result is populated for exit code checking

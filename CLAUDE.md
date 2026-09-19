@@ -375,7 +375,7 @@ Unfixed argument-passing bugs, each with an expected-to-fail test in `tests/Know
 
 ## Testing Approach
 
-Tests use Pester framework (`tests/*.tests.ps1`). Every test file sets `POWERSTUB_CONFIG_DIR` to a throwaway folder before importing the module, so tests never touch the real config - keep that in any new test file. `tests/KnownIssues.tests.ps1` holds expected-to-fail tests for unfixed bugs (tag `KnownIssue`, excluded from `dev-test.ps1` and CI; run with `./dev-test.ps1 -Tag KnownIssue`). Key test areas:
+Tests use Pester framework (`tests/*.tests.ps1`). Every test file sets `POWERSTUB_CONFIG_DIR` to a throwaway folder before importing the module, so tests never touch the real config - keep that in any new test file. `tests/KnownIssues.tests.ps1` holds expected-to-fail tests for unfixed bugs (tag `KnownIssue`, excluded from `dev-test.ps1` and CI; run with `./dev-test.ps1 -Tag KnownIssue`). `tests/ParsingMatrix.tests.ps1` runs 300 sample calls (`ParsingMatrix.cases.ps1`: scripts, a generic EXE group and real-world CLI command lines) both directly and through `pstb` and requires identical results; it is tagged `ParsingMatrix`, also excluded by default, and `./tests/Show-ParsingMatrix.ps1` summarizes the disagreements. Any change to argument parsing must not lower its agreement count. Key test areas:
 
 - Configuration loading/saving
 - Stub registration/removal
