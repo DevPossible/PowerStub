@@ -14,6 +14,7 @@
     - Direct aliases do not re-parse splatted named parameters the way pstb does
     - Re-parsed array parameters keep only their first value
     - Empty-string arguments are dropped
+    - Array arguments are flattened into separate arguments
 
 .NOTES
     Run with: Invoke-Pester ./tests/KnownIssues.tests.ps1
@@ -131,5 +132,20 @@ Describe "Known issue: empty-string arguments are dropped" -Tag 'KnownIssue' {
 
         $direct | Should -Contain 'ARG_COUNT:1'
         $proxied | Should -Contain 'ARG_COUNT:1'
+    }
+}
+
+Describe "Known issue: array arguments are flattened" -Tag 'KnownIssue' {
+    # Calling the script directly passes an array variable as ONE Object[] argument;
+    # the proxy's ValueFromRemainingArguments spreads it into one argument per element.
+    It "InvokePowerStubCommand_ArrayArgument_ArrivesAsSingleArrayLikeDirectCall" {
+        $arr = @('alpha', 'beta')
+
+        $direct = & (Join-Path $script:SampleStubRoot 'Commands\arg-echo.ps1') $arr
+        $proxied = pstb SampleStub arg-echo $arr 6>$null
+
+        $direct | Should -Contain 'ARG_COUNT:1'
+        $proxied | Should -Contain 'ARG_COUNT:1'
+        $proxied | Should -Contain 'ARG[0]:Object[]:alpha beta'
     }
 }

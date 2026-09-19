@@ -363,7 +363,7 @@ Unfixed argument-passing bugs, each with an expected-to-fail test in `tests/Know
 - Direct aliases do not re-parse array-splatted named parameters the way `pstb` does
 - The named-parameter re-parse keeps only the first value of an array parameter
 - Empty-string arguments are dropped
-- Not yet covered by a test: an array argument arrives as separate arguments instead of one `Object[]`
+- An array argument arrives as separate arguments instead of one `Object[]`
 
 ## Code Style Guidelines
 
