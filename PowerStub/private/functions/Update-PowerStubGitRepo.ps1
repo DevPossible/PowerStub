@@ -59,8 +59,17 @@ function Update-PowerStubGitRepo {
     }
 
     # Perform git pull using -C to avoid changing directory
-    $pullOutput = git -C $gitInfo.RepoRoot pull 2>&1
-    $pullSuccess = $LASTEXITCODE -eq 0
+    # The output is captured, so a terminal credential prompt would be invisible and hang:
+    # make git fail with a clear error instead. Credential manager dialogs still work.
+    $savedTerminalPrompt = $env:GIT_TERMINAL_PROMPT
+    $env:GIT_TERMINAL_PROMPT = '0'
+    try {
+        $pullOutput = git -C $gitInfo.RepoRoot pull 2>&1
+        $pullSuccess = $LASTEXITCODE -eq 0
+    }
+    finally {
+        $env:GIT_TERMINAL_PROMPT = $savedTerminalPrompt
+    }
 
     return [PSCustomObject]@{
         Success = $pullSuccess

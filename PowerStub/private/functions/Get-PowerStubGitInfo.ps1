@@ -71,7 +71,18 @@ function Get-PowerStubGitInfo {
     # Fetch to update remote tracking info (silently)
     # Only fetch if explicitly requested and we have a remote
     if ($Fetch -and $remoteUrl) {
-        git -C $Path fetch origin --quiet 2>$null
+        # A status check must never wait on a credential prompt: fail instead of hanging
+        $savedTerminalPrompt = $env:GIT_TERMINAL_PROMPT
+        $savedGcmInteractive = $env:GCM_INTERACTIVE
+        $env:GIT_TERMINAL_PROMPT = '0'
+        $env:GCM_INTERACTIVE = 'never'
+        try {
+            git -C $Path fetch origin --quiet 2>$null
+        }
+        finally {
+            $env:GIT_TERMINAL_PROMPT = $savedTerminalPrompt
+            $env:GCM_INTERACTIVE = $savedGcmInteractive
+        }
     }
 
     # Get ahead/behind counts
