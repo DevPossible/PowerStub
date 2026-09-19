@@ -435,14 +435,16 @@ pstb DevOps terraform plan -out=tfplan
 ```text
 PowerStub/                          # Repository root
 ├── PowerStub/                      # Module folder (publishable to PSGallery)
-│   ├── Public/functions/           # Exported user-facing functions (17)
-│   ├── Private/functions/          # Internal helper functions (11)
+│   ├── public/functions/           # Exported user-facing functions (folder names are lowercase)
+│   ├── private/functions/          # Internal helper functions
 │   ├── Templates/                  # Command templates
 │   ├── PowerStub.psm1              # Module loader
 │   ├── PowerStub.psd1              # Module manifest
-│   └── PowerStub.json              # Runtime configuration
+│   └── PowerStub.json              # Legacy config placeholder (the live config is %APPDATA%/PowerStub/config.json)
 ├── tests/                          # Pester test files
-│   ├── PowerStub.tests.ps1         # Main test suite (97 tests)
+│   ├── PowerStub.tests.ps1         # Main test suite
+│   ├── ConfigSafety.tests.ps1      # Config persistence, concurrency and alias safety
+│   ├── KnownIssues.tests.ps1       # Expected-to-fail tests for unfixed bugs (tag: KnownIssue)
 │   └── sample_stub_root/           # Sample stub for integration tests
 ├── dev-reload.ps1                  # Reload module for local testing
 ├── dev-test.ps1                    # Run Pester test suite
@@ -496,8 +498,8 @@ This script:
 
 Edit files in the `PowerStub/` folder:
 
-- **Public functions**: `PowerStub/Public/functions/` - Exported to users
-- **Private functions**: `PowerStub/Private/functions/` - Internal helpers
+- **Public functions**: `PowerStub/public/functions/` - Exported to users
+- **Private functions**: `PowerStub/private/functions/` - Internal helpers
 
 After making changes, reload the module to test:
 
@@ -548,7 +550,7 @@ Disable-PowerStubAlphaCommands
 
 ### Test Structure
 
-Tests are located in `tests/PowerStub.tests.ps1` and cover:
+Tests are located in `tests/*.tests.ps1`. They run against a throwaway config folder (via the `POWERSTUB_CONFIG_DIR` environment variable), never your real configuration. They cover:
 
 | Area | Description |
 |------|-------------|
@@ -561,13 +563,15 @@ Tests are located in `tests/PowerStub.tests.ps1` and cover:
 | Direct Aliases | Create, remove, tab completion for aliases |
 | Virtual Verbs | Search and help built-in commands |
 
+`tests/KnownIssues.tests.ps1` holds tests for known, unfixed bugs. They are expected to fail and are excluded from `dev-test.ps1` and CI; run them with `.\dev-test.ps1 -Tag KnownIssue`.
+
 The `tests/sample_stub_root/` folder contains a pre-configured stub with various command types for integration testing.
 
 ### Adding New Features
 
-1. **New public function**: Create in `PowerStub/Public/functions/Verb-PowerStub*.ps1`
-2. **New private function**: Create in `PowerStub/Private/functions/*.ps1`
-3. **Add tests**: Update `tests/PowerStub.tests.ps1`
+1. **New public function**: Create in `PowerStub/public/functions/Verb-PowerStub*.ps1` (lowercase `public` - the loader is case-sensitive on Linux)
+2. **New private function**: Create in `PowerStub/private/functions/*.ps1`
+3. **Add tests**: Add to the matching file in `tests/`
 4. **Update documentation**: Update README.md and CLAUDE.md
 
 Functions are automatically loaded by the module - no manifest changes needed.

@@ -1,6 +1,8 @@
 @{
     RootModule        = 'PowerStub.psm1'
-    ModuleVersion     = '2.0'
+    # Records the last release. CI overwrites this at publish time with the version
+    # calculated from git tags and commit messages (scripts/get-version.ps1).
+    ModuleVersion     = '1.1.0'
     GUID              = '9b623f79-6872-4f0a-9029-37d9c95e3d9a'
     Author            = 'DevPossible LLC'
     CompanyName       = 'DevPossible LLC'

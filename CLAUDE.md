@@ -13,17 +13,18 @@ PowerStub is a PowerShell module that creates command proxies ("stubs") for orga
 ```text
 PowerStub/                        # Repository root
 ├── PowerStub/                    # Module directory (publishable to PSGallery)
-│   ├── Public/functions/         # 17 exported user-facing functions
-│   ├── Private/functions/        # 11 internal helper functions
+│   ├── public/functions/         # Exported user-facing functions (folder names are LOWERCASE)
+│   ├── private/functions/        # Internal helper functions
 │   ├── Templates/                # Command templates
 │   ├── PowerStub.psm1            # Module loader (dot-sources all functions)
-│   ├── PowerStub.psd1            # Module manifest (version 2.0)
-│   └── PowerStub.json            # Runtime configuration
+│   ├── PowerStub.psd1            # Module manifest (version is stamped by CI from git tags)
+│   └── PowerStub.json            # Legacy config placeholder (live config: %APPDATA%/PowerStub/config.json)
+├── .gitlab-ci.yml                # ACTIVE release pipeline (GitLab CI)
 ├── pipelines/                    # Azure DevOps Pipelines
-│   └── release.yml               # Build, test, publish, release pipeline
+│   └── release.yml               # DISABLED - kept for reference
 ├── scripts/                      # Build and deployment scripts
 │   └── get-version.ps1           # Calculates version from conventional commits
-├── tests/                        # Pester test files (at repo root, 97 tests)
+├── tests/                        # Pester test files (at repo root)
 ├── .claude/commands/             # Claude Code slash commands
 ├── README.md                     # User documentation
 ├── CLAUDE.md                     # This file
@@ -72,12 +73,19 @@ PowerStub/                        # Repository root
 | `Get-PowerStubGitInfo.ps1` | Git | Gets git repo info for a path |
 | `Update-PowerStubGitRepo.ps1` | Git | Updates a git repo (git pull) |
 | `Get-PowerStubPath.ps1` | Utility | Extracts path from stub config (string or hashtable) |
+| `Sync-PowerStubConfiguration.ps1` | Config | Reloads the config when another session changed the file |
+| `Update-PowerStubConfiguration.ps1` | Config | Lock, reload, apply one change, write - the ONLY safe way to change persisted settings |
+| `Enter-PowerStubConfigurationLock.ps1` | Config | Acquires the cross-process config mutex |
+| `Exit-PowerStubConfigurationLock.ps1` | Config | Releases the config mutex |
+| `Test-PowerStubReservedName.ps1` | Utility | Names that aliases must never shadow (git, cd, ...) |
+| `Get-PowerStubCommandMetadata.ps1` | Display | Reads metadata for executable commands |
+| `Show-PowerStubCommands.ps1` | Display | Lists the commands in a stub |
 
 ## Architecture Patterns
 
 ### Module Loading (PowerStub.psm1)
 
-1. Discovers all `.ps1` files in `Public/functions/` and `Private/functions/`
+1. Discovers all `.ps1` files in `public/functions/` and `private/functions/` (lowercase - this matters on Linux)
 2. Dot-sources each file to load functions into module scope
 3. Loads configuration defaults, then imports `PowerStub.json`
 4. Exports only public functions
@@ -162,8 +170,12 @@ Note: TabExpansion2 is intentionally NOT overridden to avoid breaking tab comple
 ### Configuration Management
 
 - Config stored in `$Script:PSTBSettings` hashtable
-- Persisted to `%APPDATA%/PowerStub/config.json` (excludes internal keys)
-- Atomic writes via temp file + rename to prevent corruption
+- Persisted to `%APPDATA%/PowerStub/config.json` (excludes internal keys); `POWERSTUB_CONFIG_DIR` overrides the folder
+- Many sessions share this file. Rules that keep it from being wiped or overwritten:
+  - Module load must NEVER write the config file
+  - Change persisted settings only through `Update-PowerStubConfiguration` (lock, reload, change one entry, write). Never modify a copy of `Stubs`/`DirectAliases` and save the whole thing - that erases other sessions' changes
+  - Writes replace the file in one step with `[System.IO.File]::Move(temp, file, $true)`. Do not use `Move-Item -Force`: it deletes the destination first
+  - A blank or corrupt file is copied to `config.json.corrupt-<timestamp>` and ignored; it never stops the module loading
 - Internal keys: `ModulePath`, `ConfigFile`, `LegacyConfigFile`, `InternalConfigKeys`, `GitAvailable`
 - Config key validation warns on unknown keys to prevent typos
 - `Set-PowerStubConfiguration` preserves internal keys when replacing config
@@ -226,30 +238,34 @@ Import-PowerStubConfiguration -Reset
 
 ## CI/CD
 
-**Primary:** Azure DevOps Pipelines (source of truth)
+**Primary:** GitLab CI (`.gitlab-ci.yml`) on gitlab.devpossible.com
 **Mirror:** GitHub (public mirror at DevPossible/power-stub)
+**Disabled:** `pipelines/release.yml` (Azure DevOps) is kept for reference only
 
 | Pipeline | Trigger | Purpose |
 |----------|---------|---------|
-| `pipelines/release.yml` | Push to main | Build, test, mirror to GitHub, publish to PSGallery, create GitHub release |
+| `.gitlab-ci.yml` | Push to main | Test, version, tag, mirror to GitHub, publish to PSGallery, create GitHub release |
 
 ### Pipeline Stages (in order)
 
-1. **ValidateGitHub** - Verify GitHub PAT has access to the mirror repo
-2. **BuildTest** - Run Pester tests on Windows
-3. **Version** - Calculate next version from conventional commits
-4. **Mirror** - Push code and tags to GitHub
-5. **Publish** - Publish module to PowerShell Gallery
-6. **Release** - Create GitHub release with changelog
+1. **validate** - Verify GitHub PAT has access to the mirror repo
+2. **test** - Run Pester tests in a Linux container (Windows-only EXE tests are skipped there; `KnownIssue` tests are excluded)
+3. **version** - Calculate next version from git tags + conventional commits (`scripts/get-version.ps1`)
+4. **mirror** - Tag the release, push the tag to GitLab, push code and tag to GitHub
+5. **publish** - Stamp the version into the manifest and publish a clean copy to PowerShell Gallery
+6. **release** - Create GitHub release with changelog
+
+The version comes ONLY from git tags and commit messages. `ModuleVersion` in `PowerStub.psd1` is overwritten by CI at publish time and is never committed back, so it just records the last release.
 
 ### Required Secrets
 
-Variable group: `kv-devpossible-secrets`
+GitLab CI/CD variables (masked and protected):
 
 | Variable | Purpose |
 |----------|---------|
-| `github-pat` | GitHub PAT for mirroring and releases |
-| `psgallery-api-key` | PowerShell Gallery API key |
+| `GITHUB_PAT` | GitHub PAT for mirroring and releases |
+| `GITLAB_PUSH_TOKEN` | Token with write_repository scope, for pushing release tags |
+| `PSGALLERY_API_KEY` | PowerShell Gallery API key |
 
 ### Creating a Release
 
@@ -323,13 +339,13 @@ Common scopes for this project: `config`, `commands`, `alias`, `completion`, `gi
 
 ### Adding a New Public Function
 
-1. Create file in `PowerStub/Public/functions/`
+1. Create file in `PowerStub/public/functions/` (lowercase)
 2. Follow naming convention: `Verb-PowerStub*.ps1`
 3. Function is auto-exported via module loader
 
 ### Adding a New Private Function
 
-1. Create file in `PowerStub/Private/functions/`
+1. Create file in `PowerStub/private/functions/` (lowercase)
 2. Function is auto-loaded but not exported
 
 ### Adding New Configuration Keys
@@ -340,7 +356,14 @@ Common scopes for this project: `config`, `commands`, `alias`, `completion`, `gi
 
 ## Known Issues / TODO
 
-- None currently. Previous `Get-NamedParameters` dead code was removed in the security overhaul.
+Unfixed argument-passing bugs, each with an expected-to-fail test in `tests/KnownIssues.tests.ps1`. Command parsing is delicate: change it deliberately, with proxied-vs-direct comparison tests.
+
+- `.exe` commands lose (or crash on) arguments starting with `-` (`Get-Command` returns no `Parameters` for applications)
+- `$?`, `&&` and `||` see success after a failed command; only `$LASTEXITCODE` is reliable
+- Direct aliases do not re-parse array-splatted named parameters the way `pstb` does
+- The named-parameter re-parse keeps only the first value of an array parameter
+- Empty-string arguments are dropped
+- Not yet covered by a test: an array argument arrives as separate arguments instead of one `Object[]`
 
 ## Code Style Guidelines
 
@@ -352,7 +375,7 @@ Common scopes for this project: `config`, `commands`, `alias`, `completion`, `gi
 
 ## Testing Approach
 
-Tests use Pester framework (277 tests across 3 files). Key test areas:
+Tests use Pester framework (`tests/*.tests.ps1`). Every test file sets `POWERSTUB_CONFIG_DIR` to a throwaway folder before importing the module, so tests never touch the real config - keep that in any new test file. `tests/KnownIssues.tests.ps1` holds expected-to-fail tests for unfixed bugs (tag `KnownIssue`, excluded from `dev-test.ps1` and CI; run with `./dev-test.ps1 -Tag KnownIssue`). Key test areas:
 
 - Configuration loading/saving
 - Stub registration/removal
