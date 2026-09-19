@@ -35,13 +35,15 @@ Write-Verbose "Checking Git availability"
 $Script:GitAvailable = $null -ne (Get-Command git -ErrorAction SilentlyContinue)
 if ($Script:GitAvailable) {
     Write-Verbose "Git is available"
-    Set-PowerStubConfigurationKey 'GitAvailable' $true
+    # GitAvailable is an internal (non-persisted) key: set it in memory only.
+    # Module load must never write the config file.
+    $Script:PSTBSettings['GitAvailable'] = $true
     # GitEnabled defaults to true if available, but can be overridden by config
     $configEnabled = Get-PowerStubConfigurationKey 'GitEnabled'
     $Script:GitEnabled = if ($null -eq $configEnabled) { $true } else { $configEnabled }
 } else {
     Write-Verbose "Git is not available"
-    Set-PowerStubConfigurationKey 'GitAvailable' $false
+    $Script:PSTBSettings['GitAvailable'] = $false
     $Script:GitEnabled = $false
 }
 Write-Verbose "Git enabled: $Script:GitEnabled"

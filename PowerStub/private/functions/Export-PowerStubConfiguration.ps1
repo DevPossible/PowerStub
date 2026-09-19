@@ -47,7 +47,19 @@ function Export-PowerStubConfiguration {
 
         # Atomic write: write to a process-unique temp file, then rename into place.
         $exportConfig | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $tempFile -Encoding UTF8
-        Move-Item -LiteralPath $tempFile -Destination $fileName -Force
+        # File.Move with overwrite replaces the destination in one step. Move-Item -Force
+        # deletes the destination first, leaving a window where readers see no config.
+        # The move fails briefly while another process has the config open for reading, so retry.
+        for ($attempt = 1; ; $attempt++) {
+            try {
+                [System.IO.File]::Move($tempFile, $fileName, $true)
+                break
+            }
+            catch [System.UnauthorizedAccessException], [System.IO.IOException] {
+                if ($attempt -ge 20) { throw }
+                Start-Sleep -Milliseconds 25
+            }
+        }
         $Script:PSTBSettings['ConfigFileLastWriteUtc'] = (Get-Item -LiteralPath $fileName).LastWriteTimeUtc
     }
     finally {
