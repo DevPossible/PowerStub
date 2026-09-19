@@ -1,4 +1,4 @@
-﻿<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <SchemaVersion>2.0</SchemaVersion>
@@ -27,46 +27,58 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
-    <Folder Include="public\functions\" />
-    <Folder Include="public\functions-pscore\" />
-    <Folder Include="private\functions\" />
     <Folder Include="private\" />
+    <Folder Include="private\functions\" />
     <Folder Include="public\" />
-    <Folder Include="private\templates\" />
-    <Folder Include="tests\" />
+    <Folder Include="public\functions\" />
+    <Folder Include="Templates\" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="private\functions\Invoke-CheckedCommand.ps1" />
-    <Compile Include="private\functions\New-DynamicParam.ps1" />
-    <Compile Include="private\functions\Get-PowerStubConfigurationKey.ps1" />
-    <Compile Include="private\functions\Get-PowerStubConfigurationDefaults.ps1" />
-    <Compile Include="private\functions\ConvertTo-Hashtable.ps1" />
-    <Compile Include="private\functions\Set-PowerStubConfiguration.ps1" />
-    <Compile Include="private\functions\Set-PowerStubConfigurationKey.ps1" />
-    <Compile Include="private\functions\Find-PowerStubCommands.ps1" />
-    <Compile Include="private\functions\Export-PowerStubConfiguration.ps1" />
-    <Compile Include="private\functions\Sync-PowerStubConfiguration.ps1" />
-    <Compile Include="public\functions\Get-PowerStubCommand.ps1" />
-    <Compile Include="private\functions\Get-PowerStubCommandDynamicParams.ps1" />
-    <Compile Include="public\functions\Import-PowerStubConfiguration.ps1" />
-    <Compile Include="public\functions\Disable-PowerStubBetaCommands.ps1" />
-    <Compile Include="public\functions\Disable-PowerStubDraftCommands.ps1" />
-    <Compile Include="public\functions\Enable-PowerStubBetaCommands.ps1" />
-    <Compile Include="public\functions\Get-PowerStubConfiguration.ps1" />
-    <Compile Include="public\functions\Enable-PowerStubDraftCommands.ps1" />
-    <Compile Include="public\functions\Invoke-PowerStubCommand.ps1" />
-    <Compile Include="public\functions\Get-PowerStubs.ps1" />
-    <Compile Include="public\functions\Remove-PowerStub.ps1" />
-    <Compile Include="public\functions\New-PowerStub.ps1" />
     <Compile Include="PowerStub.psd1" />
     <Compile Include="PowerStub.psm1" />
-    <Compile Include="private\templates\command_template.ps1" />
-    <Compile Include="tests\PowerStub.tests.ps1" />
+    <Compile Include="private\functions\ConvertTo-Hashtable.ps1" />
+    <Compile Include="private\functions\Enter-PowerStubConfigurationLock.ps1" />
+    <Compile Include="private\functions\Exit-PowerStubConfigurationLock.ps1" />
+    <Compile Include="private\functions\Export-PowerStubConfiguration.ps1" />
+    <Compile Include="private\functions\Find-PowerStubCommands.ps1" />
+    <Compile Include="private\functions\Get-PowerStubCommandDynamicParams.ps1" />
+    <Compile Include="private\functions\Get-PowerStubCommandMetadata.ps1" />
+    <Compile Include="private\functions\Get-PowerStubConfigurationDefaults.ps1" />
+    <Compile Include="private\functions\Get-PowerStubConfigurationKey.ps1" />
+    <Compile Include="private\functions\Get-PowerStubGitInfo.ps1" />
+    <Compile Include="private\functions\Get-PowerStubPath.ps1" />
+    <Compile Include="private\functions\Invoke-CheckedCommand.ps1" />
+    <Compile Include="private\functions\Invoke-PowerStubUpdate.ps1" />
+    <Compile Include="private\functions\New-DynamicParam.ps1" />
+    <Compile Include="private\functions\Set-PowerStubConfiguration.ps1" />
+    <Compile Include="private\functions\Set-PowerStubConfigurationKey.ps1" />
+    <Compile Include="private\functions\Show-PowerStubCommands.ps1" />
+    <Compile Include="private\functions\Show-PowerStubOverview.ps1" />
+    <Compile Include="private\functions\Sync-PowerStubConfiguration.ps1" />
+    <Compile Include="private\functions\Test-PowerStubReservedName.ps1" />
+    <Compile Include="private\functions\Update-PowerStubConfiguration.ps1" />
+    <Compile Include="private\functions\Update-PowerStubGitRepo.ps1" />
+    <Compile Include="public\functions\Disable-PowerStubAlphaCommands.ps1" />
+    <Compile Include="public\functions\Disable-PowerStubBetaCommands.ps1" />
+    <Compile Include="public\functions\Enable-PowerStubAlphaCommands.ps1" />
+    <Compile Include="public\functions\Enable-PowerStubBetaCommands.ps1" />
+    <Compile Include="public\functions\Get-PowerStubCommand.ps1" />
+    <Compile Include="public\functions\Get-PowerStubCommandHelp.ps1" />
+    <Compile Include="public\functions\Get-PowerStubConfiguration.ps1" />
+    <Compile Include="public\functions\Get-PowerStubs.ps1" />
+    <Compile Include="public\functions\Import-PowerStubConfiguration.ps1" />
+    <Compile Include="public\functions\Invoke-PowerStubCommand.ps1" />
+    <Compile Include="public\functions\New-PowerStub.ps1" />
+    <Compile Include="public\functions\New-PowerStubDirectAlias.ps1" />
+    <Compile Include="public\functions\Remove-PowerStub.ps1" />
+    <Compile Include="public\functions\Remove-PowerStubDirectAlias.ps1" />
+    <Compile Include="public\functions\Search-PowerStubCommands.ps1" />
+    <Compile Include="public\functions\Set-PowerStubCommandVisibility.ps1" />
+    <Compile Include="Templates\command_template.ps1" />
   </ItemGroup>
   <ItemGroup>
     <Content Include=".gitignore" />
-    <Content Include="LICENSE.txt" />
-    <Content Include="README.md" />
+    <Content Include="PowerStub.json" />
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath)\PowerShell Tools for Visual Studio\PowerShellTools.targets" Condition="Exists('$(MSBuildExtensionsPath)\PowerShell Tools for Visual Studio\PowerShellTools.targets')" />
 </Project>

@@ -420,8 +420,13 @@ stages:
                 }
 
                 Write-Host "[TRACE] Not yet published, proceeding with Publish-Module"
+                # Publish from a clean copy so development-only files do not ship in the package
+                $stagePath = Join-Path ([System.IO.Path]::GetTempPath()) 'publish/PowerStub'
+                New-Item -Path $stagePath -ItemType Directory -Force | Out-Null
+                Copy-Item -Path '$(modulePath)/*' -Destination $stagePath -Recurse -Exclude '*.pssproj', '.gitignore'
+
                 # Publish the module
-                Publish-Module -Path '$(modulePath)' -NuGetApiKey $apiKey -Verbose
+                Publish-Module -Path $stagePath -NuGetApiKey $apiKey -Verbose
 
                 Write-Host "Successfully published PowerStub v$(version) to PowerShell Gallery!"
               pwsh: true

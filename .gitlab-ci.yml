@@ -295,7 +295,12 @@ publish:
             return
         }
 
-        Publish-Module -Path $env:MODULE_PATH -NuGetApiKey $env:PSGALLERY_API_KEY -Verbose
+        # Publish from a clean copy so development-only files do not ship in the package
+        $stagePath = Join-Path ([System.IO.Path]::GetTempPath()) "publish/PowerStub"
+        New-Item -Path $stagePath -ItemType Directory -Force | Out-Null
+        Copy-Item -Path "$env:MODULE_PATH/*" -Destination $stagePath -Recurse -Exclude "*.pssproj", ".gitignore"
+
+        Publish-Module -Path $stagePath -NuGetApiKey $env:PSGALLERY_API_KEY -Verbose
       '
 
 github_release:
