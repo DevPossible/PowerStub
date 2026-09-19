@@ -21,15 +21,12 @@ BeforeAll {
     $module = Get-Module -Name 'PowerStub'
     if ($module) { Remove-Module -ModuleInfo $module -Force }
 
+    # Point the module at a throwaway config dir so the tests never touch the real config
+    $script:TestConfigDir = Join-Path ([System.IO.Path]::GetTempPath()) "PSTBTestConfig_$([guid]::NewGuid())"
+    $env:POWERSTUB_CONFIG_DIR = $script:TestConfigDir
+
     $modulePath = Join-Path $PSScriptRoot '..\PowerStub\PowerStub.psm1'
     Import-Module $modulePath -Force
-
-    $script:OriginalConfig = Get-PowerStubConfiguration
-    $script:ConfigFile = $script:OriginalConfig['ConfigFile']
-    $script:ConfigBackup = $script:ConfigFile + ".proxy.bak"
-    if (Test-Path $script:ConfigFile) {
-        Copy-Item $script:ConfigFile $script:ConfigBackup -Force
-    }
 
     $script:SampleStubRoot = Join-Path $PSScriptRoot 'sample_stub_root'
 
@@ -67,10 +64,10 @@ BeforeAll {
 }
 
 AfterAll {
-    if (Test-Path $script:ConfigBackup) {
-        Copy-Item $script:ConfigBackup $script:ConfigFile -Force
-        Remove-Item $script:ConfigBackup -Force
-        Import-PowerStubConfiguration
+    Remove-Module -Name 'PowerStub' -Force -ErrorAction SilentlyContinue
+    Remove-Item Env:\POWERSTUB_CONFIG_DIR -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $script:TestConfigDir) {
+        Remove-Item -LiteralPath $script:TestConfigDir -Recurse -Force
     }
 }
 

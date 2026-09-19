@@ -100,19 +100,13 @@ BeforeAll {
         Remove-Module -ModuleInfo $module -Force
     }
 
+    # Point the module at a throwaway config dir so the tests never touch the real config
+    $script:TestConfigDir = Join-Path ([System.IO.Path]::GetTempPath()) "PSTBTestConfig_$([guid]::NewGuid())"
+    $env:POWERSTUB_CONFIG_DIR = $script:TestConfigDir
+
     # Import the module
     $modulePath = Join-Path $PSScriptRoot '..\PowerStub\PowerStub.psm1'
     Import-Module $modulePath -Force
-
-    # Store original config for restoration
-    $script:OriginalConfig = Get-PowerStubConfiguration
-    $script:ConfigFile = $script:OriginalConfig['ConfigFile']
-    $script:ConfigBackup = $script:ConfigFile + ".argtest.bak"
-
-    # Backup config if it exists
-    if (Test-Path $script:ConfigFile) {
-        Copy-Item $script:ConfigFile $script:ConfigBackup -Force
-    }
 
     # Sample stub root for tests
     $script:SampleStubRoot = Join-Path $PSScriptRoot 'sample_stub_root'
@@ -178,12 +172,11 @@ BeforeAll {
 }
 
 AfterAll {
-    # Restore original config
-    if (Test-Path $script:ConfigBackup) {
-        Copy-Item $script:ConfigBackup $script:ConfigFile -Force
-        Remove-Item $script:ConfigBackup -Force
+    Remove-Module -Name 'PowerStub' -Force -ErrorAction SilentlyContinue
+    Remove-Item Env:\POWERSTUB_CONFIG_DIR -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $script:TestConfigDir) {
+        Remove-Item -LiteralPath $script:TestConfigDir -Recurse -Force
     }
-    Import-PowerStubConfiguration
 }
 
 # =============================================================================

@@ -27,27 +27,22 @@ BeforeAll {
         Remove-Module -ModuleInfo $existing -Force
     }
 
+    # Point the module at a throwaway config dir so the tests never touch the real config
+    $script:TestConfigDir = Join-Path ([System.IO.Path]::GetTempPath()) "PSTBTestConfig_$([guid]::NewGuid())"
+    $env:POWERSTUB_CONFIG_DIR = $script:TestConfigDir
+
     $modulePath = Join-Path $PSScriptRoot '..\PowerStub\PowerStub.psm1'
     Import-Module $modulePath -Force
-
-    # Stash the real config file path and create a backup
-    $script:OriginalConfig = Get-PowerStubConfiguration
-    $script:ConfigFile     = $script:OriginalConfig['ConfigFile']
-    $script:ConfigBackup   = $script:ConfigFile + '.privatetests.bak'
-
-    if (Test-Path $script:ConfigFile) {
-        Copy-Item $script:ConfigFile $script:ConfigBackup -Force
-    }
 
     $script:SampleStubRoot = Join-Path $PSScriptRoot 'sample_stub_root'
 }
 
 AfterAll {
-    if (Test-Path $script:ConfigBackup) {
-        Copy-Item $script:ConfigBackup $script:ConfigFile -Force
-        Remove-Item $script:ConfigBackup -Force
+    Remove-Module -Name 'PowerStub' -Force -ErrorAction SilentlyContinue
+    Remove-Item Env:\POWERSTUB_CONFIG_DIR -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $script:TestConfigDir) {
+        Remove-Item -LiteralPath $script:TestConfigDir -Recurse -Force
     }
-    Import-PowerStubConfiguration
 }
 
 # ---------------------------------------------------------------------------
@@ -500,7 +495,7 @@ Describe "Export-PowerStubConfiguration" {
                     Start-Job -ScriptBlock {
                         param($ModulePath, $AppData)
 
-                        $env:APPDATA = $AppData
+                        $env:POWERSTUB_CONFIG_DIR = Join-Path $AppData 'PowerStub'
                         Import-Module $ModulePath -Force -WarningAction Stop
 
                         [PSCustomObject]@{
@@ -545,7 +540,7 @@ param(
     [string]$StubPath
 )
 
-$env:APPDATA = $AppData
+$env:POWERSTUB_CONFIG_DIR = Join-Path $AppData 'PowerStub'
 Import-Module $ModulePath -Force
 New-PowerStub -Name ExternalStub -Path $StubPath -Force
 '@ | Set-Content -LiteralPath $childScript -Encoding UTF8
@@ -558,7 +553,7 @@ param(
     [string]$ChildScript
 )
 
-$env:APPDATA = $AppData
+$env:POWERSTUB_CONFIG_DIR = Join-Path $AppData 'PowerStub'
 Import-Module $ModulePath -Force
 $initialCount = @((Get-PowerStubs).Keys).Count
 Start-Sleep -Milliseconds 50

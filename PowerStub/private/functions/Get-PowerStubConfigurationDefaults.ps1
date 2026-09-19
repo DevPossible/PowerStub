@@ -20,8 +20,11 @@ None. You cannot pipe objects to this function.
 
 function Get-PowerStubConfigurationDefaults {
 
-    # Use version-independent config path to persist across module updates
-    $configDir = if ($env:APPDATA) {
+    # Use version-independent config path to persist across module updates.
+    # POWERSTUB_CONFIG_DIR overrides the location (used by the tests to stay away from the real config).
+    $configDir = if ($env:POWERSTUB_CONFIG_DIR) {
+        $env:POWERSTUB_CONFIG_DIR
+    } elseif ($env:APPDATA) {
         Join-Path $env:APPDATA 'PowerStub'
     } else {
         Join-Path $HOME '.config/powerstub'
