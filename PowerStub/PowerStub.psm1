@@ -10,15 +10,15 @@ if ($MyInvocation.line -match '-verbose') {
 #Get all files with functions in them
 Write-Verbose 'Finding functions'
 
-$privateFn = Get-ChildItem -Path $PSScriptRoot\private\functions\*.ps1;
-$publicFn = Get-ChildItem -Path $PSScriptRoot\public\functions\*.ps1;
+$privateFn = Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'private/functions') -Filter '*.ps1';
+$publicFn = Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'public/functions') -Filter '*.ps1';
 
 #If we are in PowerShell core, load any core specific functions
 if ($IsCoreCLR) {
     $pscorePath = Join-Path $PSScriptRoot 'public\functions-pscore'
-    if (Test-Path $pscorePath) {
+    if (Test-Path -LiteralPath $pscorePath) {
         Write-Verbose 'PowerShell 7 specific commands enabled'
-        $publicFn += Get-ChildItem -Path "$pscorePath\*.ps1"
+        $publicFn += Get-ChildItem -LiteralPath $pscorePath -Filter '*.ps1'
     }
 }
 

@@ -1,7 +1,7 @@
 @{
     RootModule        = 'PowerStub.psm1'
-    # Records the last release. CI overwrites this at publish time with the version
-    # calculated from git tags and commit messages (scripts/get-version.ps1).
+    # Development baseline, not necessarily the latest published version. CI stamps
+    # only the staged package using git tags and commit messages (scripts/get-version.ps1).
     ModuleVersion     = '1.1.0'
     GUID              = '9b623f79-6872-4f0a-9029-37d9c95e3d9a'
     Author            = 'DevPossible LLC'
@@ -31,7 +31,9 @@
 
     CmdletsToExport   = @()
     VariablesToExport  = @()
-    AliasesToExport    = @('pstb')
+    # The loader explicitly exports only the validated configured invocation alias.
+    # A fixed 'pstb' allowlist would hide custom aliases on manifest imports.
+    AliasesToExport    = @('*')
 
     PrivateData = @{
         PSData = @{

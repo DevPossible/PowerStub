@@ -6,9 +6,7 @@
 .DESCRIPTION
     Import the manifest, as normal module installations do. Every case gets an isolated
     configuration and disposable commands; original environment/location are restored.
-    KnownIssue cases assert the intended contract and currently FAIL. They are explicitly
-    excluded from the default release gate, not weakened to assert broken behavior.
-    Run them with ./dev-test.ps1 -Tag KnownIssue. Their names explain each open defect.
+    Regression cases assert the intended contract and run in the default release gate.
 #>
 
 BeforeAll {
@@ -367,30 +365,83 @@ Describe 'Release contracts through the installed manifest' -Tag 'ReleaseCoverag
         }
     }
 
-    Context 'Known defects: installed alias, literal paths, reserved verbs and offline status' -Tag 'KnownIssue' {
-        It 'JSON scalar configuration must be rejected and backed up before a later write' {
-            [IO.File]::WriteAllText($script:ReleaseConfigFile, '42')
+    Context 'Installed alias, literal paths, reserved verbs and offline status regressions' {
+        It 'Invalid JSON root <Label> must be rejected and backed up before a later write' -ForEach @(
+            @{ Label = 'number'; Text = '42' },
+            @{ Label = 'boolean'; Text = 'true' },
+            @{ Label = 'string'; Text = '"config"' },
+            @{ Label = 'single-object array'; Text = '[{"Stubs":{}}]' }
+        ) {
+            [IO.File]::WriteAllText($script:ReleaseConfigFile, $Text)
             Import-Module $script:ReleaseManifest -Force -WarningAction SilentlyContinue
-            # ConvertTo-Hashtable currently turns a JSON scalar into an empty object,
-            # silently accepting it and leaving no recovery copy for the next mutation.
-            [IO.File]::ReadAllText($script:ReleaseConfigFile) | Should -BeExactly '42'
+            [IO.File]::ReadAllText($script:ReleaseConfigFile) | Should -BeExactly $Text
             $copies = @(Get-ChildItem -LiteralPath $env:POWERSTUB_CONFIG_DIR -Filter 'config.json.corrupt-*')
             $copies.Count | Should -Be 1
-            [IO.File]::ReadAllText($copies[0].FullName) | Should -BeExactly '42'
+            [IO.File]::ReadAllText($copies[0].FullName) | Should -BeExactly $Text
+            $null = New-ReleaseStub
+            [IO.File]::ReadAllText($copies[0].FullName) | Should -BeExactly $Text
+            (pstb ReleaseStub ok 6>$null) | Should -Be 'release-ok'
         }
 
         It 'Custom InvokeAlias must be exported by a manifest import, just as by psm1' {
             @{ InvokeAlias = 'pstbreleasecustom'; GitEnabled = $false; Stubs = @{} } |
                 ConvertTo-Json | Set-Content -LiteralPath $script:ReleaseConfigFile
             Import-Module $script:ReleaseManifest -Force
-            # The manifest currently permits only pstb and filters out the configured alias.
             Get-Command pstbreleasecustom -ErrorAction SilentlyContinue | Should -Not -BeNullOrEmpty
+            @((Get-Module PowerStub).ExportedAliases.Keys) | Should -Be @('pstbreleasecustom')
+            $null = New-ReleaseStub
+            (pstbreleasecustom ReleaseStub ok 6>$null) | Should -Be 'release-ok'
+            Import-Module $script:ReleaseManifest -Force
+            (pstbreleasecustom ReleaseStub ok 6>$null) | Should -Be 'release-ok'
+            Get-Command pstb -ErrorAction SilentlyContinue | Should -BeNullOrEmpty
         }
 
         It 'A registered folder containing literal brackets must remain invocable' {
             $null = New-ReleaseStub -Folder 'stub[1]'
-            # Test-Path/Get-ChildItem currently interpret the registered path as a wildcard.
             (pstb ReleaseStub ok 3>$null 6>$null) | Should -Be 'release-ok'
+        }
+
+        It 'Literal bracket paths support discovery, completion and lifecycle changes without touching lookalikes' {
+            $literal = New-ReleaseStub -Name Literal -Folder 'stub[1]'
+            $lookalike = New-ReleaseStub -Name Lookalike -Folder 'stub1'
+            $names = InModuleScope PowerStub { @(Find-PowerStubCommands Literal).BaseName }
+            $names | Should -Contain 'ok'
+            $line = 'pstb Literal o'
+            (TabExpansion2 $line $line.Length).CompletionMatches.CompletionText | Should -Contain 'ok'
+            Set-PowerStubCommandVisibility Literal ok Beta 6>$null | Out-Null
+            Test-Path -LiteralPath (Join-Path $literal 'Commands/beta.ok.ps1') | Should -BeTrue
+            Test-Path -LiteralPath (Join-Path $lookalike 'Commands/ok.ps1') | Should -BeTrue
+            Test-Path -LiteralPath (Join-Path $lookalike 'Commands/beta.ok.ps1') | Should -BeFalse
+            Enable-PowerStubBetaCommands
+            (pstb Literal ok 6>$null) | Should -Be 'release-ok'
+        }
+
+        It 'Imports from a literal bracket module folder with a literal bracket config folder' {
+            Remove-Module PowerStub -Force
+            $moduleRoot = Join-Path $script:ReleaseRoot 'modules[1]/PowerStub'
+            [IO.Directory]::CreateDirectory($moduleRoot) | Out-Null
+            Copy-Item -LiteralPath (Split-Path $script:ReleaseManifest) -Destination (Split-Path $moduleRoot) -Recurse -Force
+            $env:POWERSTUB_CONFIG_DIR = Join-Path $script:ReleaseRoot 'config[1]'
+            Import-Module (Join-Path $moduleRoot 'PowerStub.psd1') -Force
+            $null = New-ReleaseStub -Folder 'stub[1]'
+            (pstb ReleaseStub ok 6>$null) | Should -Be 'release-ok'
+            Test-Path -LiteralPath (Join-Path $env:POWERSTUB_CONFIG_DIR 'config.json') | Should -BeTrue
+            Import-Module (Join-Path $moduleRoot 'PowerStub.psd1') -Force
+            (pstb ReleaseStub ok 6>$null) | Should -Be 'release-ok'
+        }
+
+        It 'Rejects non-filesystem registration paths without persisting a stub' {
+            { New-PowerStub -Name Environment -Path 'Env:POWERSTUB_CONFIG_DIR' } | Should -Throw '*FileSystem*'
+            (Get-PowerStubs).Keys | Should -Not -Contain 'Environment'
+        }
+
+        It 'Does not persist a registration when a required directory is an existing file' {
+            $root = Join-Path $script:ReleaseRoot 'blocked-stub'
+            [IO.Directory]::CreateDirectory($root) | Out-Null
+            [IO.File]::WriteAllText((Join-Path $root 'Commands'), 'do not replace')
+            { New-PowerStub -Name Blocked -Path $root } | Should -Throw
+            (Get-PowerStubs).Keys | Should -Not -Contain 'Blocked'
+            [IO.File]::ReadAllText((Join-Path $root 'Commands')) | Should -BeExactly 'do not replace'
         }
 
         It 'A relative registration must persist an absolute filesystem path' {
@@ -408,10 +459,11 @@ Describe 'Release contracts through the installed manifest' -Tag 'ReleaseCoverag
         }
 
         It 'Registration must reject unusable virtual-verb stub name <Name>' -ForEach @(
-            @{ Name = 'help' }, @{ Name = 'search' }, @{ Name = 'update' }
+            @{ Name = 'help' }, @{ Name = 'search' }, @{ Name = 'update' }, @{ Name = 'HeLp' }, @{ Name = 'SEARCH' }, @{ Name = 'UPDATE' }
         ) {
             # Dispatch always treats these names as virtual verbs, so registration is misleading.
-            { New-PowerStub -Name $Name -Path (Join-Path $script:ReleaseRoot $Name) } | Should -Throw
+            { New-PowerStub -Name $Name -Path (Join-Path $script:ReleaseRoot $Name) -Force } | Should -Throw '*reserved*'
+            Test-Path -LiteralPath (Join-Path $script:ReleaseRoot $Name) | Should -BeFalse
             (Get-PowerStubs).Keys | Should -Not -Contain $Name
         }
 
@@ -421,7 +473,6 @@ Describe 'Release contracts through the installed manifest' -Tag 'ReleaseCoverag
             InModuleScope PowerStub { $Script:GitEnabled = $true; $Script:GitAvailable = $true }
             $null = New-ReleaseGitRepository
             $output = if ($Scope -eq 'one stub') { pstb update OfflineStub --check 6>&1 } else { pstb update --check 6>&1 }
-            # Fetch failure is discarded and zero stale tracking counts become success text.
             ($output | Out-String) | Should -Not -Match 'up to date'
         }
 

@@ -47,7 +47,7 @@ function Import-PowerStubConfiguration {
 
     # Ensure config directory exists
     $configDir = Split-Path $fileName -Parent
-    if (-not (Test-Path $configDir)) {
+    if (-not (Test-Path -LiteralPath $configDir)) {
         New-Item -ItemType Directory -Path $configDir -Force | Out-Null
         Write-Verbose "Created config directory: $configDir"
     }
@@ -58,7 +58,7 @@ function Import-PowerStubConfiguration {
     # Check for config file, with migration from legacy location
     $configToLoad = $null
     $migrating = $false
-    if (Test-Path $fileName) {
+    if (Test-Path -LiteralPath $fileName) {
         $configToLoad = $fileName
         Write-Verbose "Using config file: $fileName"
     }
@@ -68,7 +68,7 @@ function Import-PowerStubConfiguration {
         # The PowerStub.json shipped with the module is empty and is never migrated.
         $moduleParent = Split-Path $Script:ModulePath -Parent
         $legacyCandidates = @($legacyFileName) + @(
-            Get-ChildItem -Path $moduleParent -Directory -ErrorAction SilentlyContinue |
+            Get-ChildItem -LiteralPath $moduleParent -Directory -ErrorAction SilentlyContinue |
                 ForEach-Object { Join-Path $_.FullName 'PowerStub.json' }
         ) | Select-Object -Unique | Where-Object { Test-Path -LiteralPath $_ }
 
@@ -104,13 +104,20 @@ function Import-PowerStubConfiguration {
 
         $newConfig = $null
         try {
-            $newConfig = $configJson | ConvertFrom-Json -ErrorAction Stop | ConvertTo-Hashtable
+            # Preserve the root JSON type: pipeline enumeration could otherwise turn
+            # a single-object array into an accepted object, or wrap scalars as objects.
+            $parsedConfig = ConvertFrom-Json -InputObject $configJson -NoEnumerate -ErrorAction Stop
+            if ($null -ne $parsedConfig -and $parsedConfig.GetType() -eq [System.Management.Automation.PSCustomObject]) {
+                # Keep case-insensitive maps for stub/alias names. -AsHashtable uses
+                # case-sensitive JSON keys and would allow saved-only alias duplicates.
+                $newConfig = ConvertTo-Hashtable -InputObject $parsedConfig
+            }
         }
         catch {
             Write-Verbose "Configuration file is not valid JSON: $_"
         }
 
-        if ($newConfig -isnot [hashtable]) {
+        if ($newConfig -isnot [System.Collections.IDictionary]) {
             # Blank or corrupt. Keep a copy, because the next save replaces the file,
             # and carry on with the current settings so the module still loads.
             $corruptCopy = "$configToLoad.corrupt-$(Get-Date -Format 'yyyyMMddHHmmss')"

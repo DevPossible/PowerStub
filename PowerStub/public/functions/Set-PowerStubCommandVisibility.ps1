@@ -61,7 +61,7 @@ function Set-PowerStubCommandVisibility {
     $stubRoot = Get-PowerStubPath -StubConfig $stubs[$Stub]
     $commandsPath = Join-Path $stubRoot 'Commands'
 
-    if (-not (Test-Path $commandsPath)) {
+    if (-not (Test-Path -LiteralPath $commandsPath)) {
         throw "Commands folder not found for stub '$Stub'."
     }
 
@@ -86,14 +86,14 @@ function Set-PowerStubCommandVisibility {
     # Determine which files exist and where
     $isSubfolder = $false
 
-    if (Test-Path $alphaFile) { $versions.Alpha = $alphaFile }
-    elseif (Test-Path $alphaSubFile) { $versions.Alpha = $alphaSubFile; $isSubfolder = $true }
+    if (Test-Path -LiteralPath $alphaFile) { $versions.Alpha = $alphaFile }
+    elseif (Test-Path -LiteralPath $alphaSubFile) { $versions.Alpha = $alphaSubFile; $isSubfolder = $true }
 
-    if (Test-Path $betaFile) { $versions.Beta = $betaFile }
-    elseif (Test-Path $betaSubFile) { $versions.Beta = $betaSubFile; $isSubfolder = $true }
+    if (Test-Path -LiteralPath $betaFile) { $versions.Beta = $betaFile }
+    elseif (Test-Path -LiteralPath $betaSubFile) { $versions.Beta = $betaSubFile; $isSubfolder = $true }
 
-    if (Test-Path $prodFile) { $versions.Production = $prodFile }
-    elseif (Test-Path $prodSubFile) { $versions.Production = $prodSubFile; $isSubfolder = $true }
+    if (Test-Path -LiteralPath $prodFile) { $versions.Production = $prodFile }
+    elseif (Test-Path -LiteralPath $prodSubFile) { $versions.Production = $prodSubFile; $isSubfolder = $true }
 
     # Count how many versions exist
     $existingVersions = $versions.GetEnumerator() | Where-Object { $_.Value -ne $null }
@@ -162,7 +162,7 @@ function Set-PowerStubCommandVisibility {
     $targetFile = Join-Path $sourceDir $targetFileName
 
     # Check if target already exists (and it's not the source)
-    if ((Test-Path $targetFile) -and ($targetFile -ne $sourceFile)) {
+    if ((Test-Path -LiteralPath $targetFile) -and ($targetFile -ne $sourceFile)) {
         if (-not $Force) {
             $response = Read-Host "Target file '$targetFileName' already exists. Replace it? (y/N)"
             if ($response -notmatch '^[Yy]') {
@@ -171,13 +171,13 @@ function Set-PowerStubCommandVisibility {
             }
         }
         # Remove existing target
-        Remove-Item $targetFile -Force
+        Remove-Item -LiteralPath $targetFile -Force
         Write-Verbose "Removed existing target file: $targetFile"
     }
 
     # Rename the file
     if ($PSCmdlet.ShouldProcess($sourceFile, "Rename to $targetFileName")) {
-        Rename-Item -Path $sourceFile -NewName $targetFileName -Force
+        Rename-Item -LiteralPath $sourceFile -NewName $targetFileName -Force
 
         Write-Host "Changed '$Command' visibility: $sourceVisibility -> $Visibility" -ForegroundColor Green
 
