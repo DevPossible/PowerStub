@@ -64,7 +64,7 @@ function Search-PowerStubCommands {
             $helpMatch = $false
 
             try {
-                $help = Get-Help $cmd.FullName -ErrorAction SilentlyContinue
+                $help = Get-Help ([System.Management.Automation.WildcardPattern]::Escape($cmd.FullName)) -ErrorAction SilentlyContinue
                 if ($help) {
                     $synopsis = if ($help.Synopsis) { $help.Synopsis.Trim() } else { $null }
                     $description = if ($help.Description) {

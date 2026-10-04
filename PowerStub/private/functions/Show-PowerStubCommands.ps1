@@ -69,7 +69,7 @@ function Show-PowerStubCommands {
             }
             else {
                 # For .ps1 files, get help directly
-                $help = Get-Help $cmd.FullName -ErrorAction SilentlyContinue
+                $help = Get-Help ([System.Management.Automation.WildcardPattern]::Escape($cmd.FullName)) -ErrorAction SilentlyContinue
                 if ($help -and $help.Synopsis -and $help.Synopsis -ne $cmd.FullName) {
                     $synopsis = $help.Synopsis.Trim()
                 }

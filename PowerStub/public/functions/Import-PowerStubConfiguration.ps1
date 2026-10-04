@@ -3,7 +3,7 @@
   Imports PowerStub configuration from the configuration file or resets to defaults.
 
 .DESCRIPTION
-  Imports the PowerStub configuration from PowerStub.json in the module configuration directory.
+  Imports the PowerStub configuration from the version-independent config.json file.
   Automatically migrates configuration from legacy module version locations if found.
   Supports resetting the configuration to defaults and re-exporting to the config file.
 
@@ -19,7 +19,7 @@
 .EXAMPLE
   Import-PowerStubConfiguration
 
-  Loads the configuration from PowerStub.json file.
+  Loads the configuration from config.json; migrates a legacy PowerStub.json if needed.
 
 .EXAMPLE
   Import-PowerStubConfiguration -Reset

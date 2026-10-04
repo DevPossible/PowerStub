@@ -44,7 +44,7 @@ function Invoke-CheckedCommand {
         $parameter = $null
         if ($targetArgs[$i] -is [string] -and $targetArgs[$i] -match '^-([^:]+):$') {
             if (-not $commandInfo) {
-                $commandInfo = Get-Command -Name $command -ErrorAction SilentlyContinue
+                $commandInfo = Resolve-PowerStubFileCommand -Path $command
             }
             if ($commandInfo.Parameters) {
                 try {

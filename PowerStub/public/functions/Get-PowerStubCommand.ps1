@@ -124,6 +124,6 @@ function Get-PowerStubCommand {
         return
     }
 
-    $commandObj = Get-Command -Name $($commandFile.FullName) -ErrorAction SilentlyContinue
+    $commandObj = Resolve-PowerStubFileCommand -Path $commandFile.FullName
     return $commandObj
 }

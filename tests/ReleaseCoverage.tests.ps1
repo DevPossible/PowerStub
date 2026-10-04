@@ -404,6 +404,9 @@ Describe 'Release contracts through the installed manifest' -Tag 'ReleaseCoverag
         It 'Literal bracket paths support discovery, completion and lifecycle changes without touching lookalikes' {
             $literal = New-ReleaseStub -Name Literal -Folder 'stub[1]'
             $lookalike = New-ReleaseStub -Name Lookalike -Folder 'stub1'
+            [IO.File]::WriteAllText((Join-Path $lookalike 'Commands/ok.ps1'), "'lookalike-must-not-run'")
+            (Get-PowerStubCommand Literal ok).Path | Should -BeExactly (Join-Path $literal 'Commands/ok.ps1')
+            (pstb Literal ok 6>$null) | Should -BeExactly 'release-ok'
             $names = InModuleScope PowerStub { @(Find-PowerStubCommands Literal).BaseName }
             $names | Should -Contain 'ok'
             $line = 'pstb Literal o'
@@ -414,6 +417,52 @@ Describe 'Release contracts through the installed manifest' -Tag 'ReleaseCoverag
             Test-Path -LiteralPath (Join-Path $lookalike 'Commands/beta.ok.ps1') | Should -BeFalse
             Enable-PowerStubBetaCommands
             (pstb Literal ok 6>$null) | Should -Be 'release-ok'
+        }
+
+        It 'Literal bracket targets use their own switch metadata and help beside wildcard lookalikes' {
+            $literal = New-ReleaseStub -Name Literal -Folder 'tools[q]'
+            $lookalike = New-ReleaseStub -Name Lookalike -Folder 'toolsq'
+            [IO.File]::WriteAllText((Join-Path $literal 'Commands/probe.ps1'), @'
+<#
+.SYNOPSIS
+    literal-target-help
+#>
+param([switch]$Flag)
+"literal:$Flag"
+'@)
+            [IO.File]::WriteAllText((Join-Path $lookalike 'Commands/probe.ps1'), @'
+<#
+.SYNOPSIS
+    lookalike-help-must-not-be-used
+#>
+param([string]$Flag)
+"lookalike:$Flag"
+'@)
+            New-PowerStubDirectAlias -AliasName pstbreleasealias -Stub Literal | Out-Null
+            $beforeLocation = (Get-Location).Path
+            (Get-PowerStubCommand Literal probe).Path | Should -BeExactly (Join-Path $literal 'Commands/probe.ps1')
+            (pstb Literal probe -Flag:$false 6>$null) | Should -BeExactly 'literal:False'
+            (pstbreleasealias probe -Flag:$false 6>$null) | Should -BeExactly 'literal:False'
+            (Get-PowerStubCommandHelp Literal probe).Synopsis | Should -Match 'literal-target-help'
+            (Get-Location).Path | Should -BeExactly $beforeLocation
+        }
+
+        It 'Literal bracket filenames resolve exactly beside wildcard and prefix siblings' {
+            $literal = New-ReleaseStub -Name Literal -Folder 'tools[q]'
+            $lookalike = New-ReleaseStub -Name Lookalike -Folder 'toolsq'
+            $target = Join-Path $literal 'Commands/probe[q].ps1'
+            [IO.File]::WriteAllText($target, 'param([switch]$Flag); "literal-name:$Flag"')
+            [IO.File]::WriteAllText((Join-Path $literal 'Commands/probeq.ps1'), "'filename-lookalike'")
+            [IO.File]::WriteAllText((Join-Path $lookalike 'Commands/probeq.ps1'), "'directory-lookalike'")
+            [IO.File]::WriteAllText((Join-Path $literal 'Commands/probe[q].ps1.bak'), "'prefix-lookalike'")
+            (Get-PowerStubCommand Literal 'probe[q]').Path | Should -BeExactly $target
+            (pstb Literal 'probe[q]' -Flag:$false 6>$null) | Should -BeExactly 'literal-name:False'
+
+            $nativeSource = if ($IsWindows) { $env:ComSpec } else { (Get-Command sh -CommandType Application).Source }
+            foreach ($path in @((Join-Path $literal 'Commands/native[q].exe'), (Join-Path $literal 'Commands/nativeq.exe'), (Join-Path $lookalike 'Commands/nativeq.exe'))) {
+                Copy-Item -LiteralPath $nativeSource -Destination $path
+            }
+            (Get-PowerStubCommand Literal 'native[q]').Path | Should -BeExactly (Join-Path $literal 'Commands/native[q].exe')
         }
 
         It 'Imports from a literal bracket module folder with a literal bracket config folder' {

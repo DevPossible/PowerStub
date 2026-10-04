@@ -75,7 +75,7 @@ function Get-PowerStubCommandMetadata {
 
     # Get help from the metadata file
     try {
-        $help = Get-Help $metadataPath -Full -ErrorAction SilentlyContinue
+        $help = Get-Help ([System.Management.Automation.WildcardPattern]::Escape($metadataPath)) -Full -ErrorAction SilentlyContinue
         return [PSCustomObject]@{
             Path = $metadataPath
             Help = $help
