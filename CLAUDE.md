@@ -140,12 +140,15 @@ The `Get-PowerStubPath` helper function handles both formats transparently.
 Direct aliases provide shortcut access to frequently used stubs:
 
 ```powershell
-New-PowerStubDirectAlias -AliasName "do" -Stub "DevOps"
-do deploy  # Same as: pstb DevOps deploy
+New-PowerStubDirectAlias -AliasName "dv" -Stub "DevOps"
+dv deploy  # Same as: pstb DevOps deploy
 ```
 
 - Aliases are stored in `DirectAliases` config key
-- Re-registered automatically on module load
+- Public add rejects every existing command or saved alias, even with `-Force`; names are case-insensitive and language keywords are reserved
+- Module load restores saved aliases through private `Register-PowerStubDirectAlias`, only when their names are free; legacy `ForcedDirectAliases` never authorizes replacement
+- `RegisteredDirectAliasFunctions` records the exact generated ScriptBlock; cleanup and completion must check ownership, not just a registered name
+- Configured main `InvokeAlias` collisions warn and fall back to a free `pstb`, or leave only the full command name available; importing must not rewrite config
 - Support full tab completion for commands and parameters
 
 ### Argument Pass-Through (read this before touching parsing)
@@ -158,7 +161,7 @@ do deploy  # Same as: pstb DevOps deploy
 - `-Switch:$false` is the one form a splat cannot carry; `Invoke-CheckedCommand` moves those pairs into a named splat.
 - `Resolve-PowerStubInvocation` decides which tokens are the stub and command (positional, or the full names `-Stub`/`-Command` before the target's arguments). Execution and completion both use it.
 
-`tests/ParsingMatrix.tests.ps1` runs 300 calls directly and through `pstb` and compares them. Any change here must not lower its agreement count (currently 285/300; the rest are PowerShell changing the call before pstb sees it: a bare `--` is removed, and for executables `-x:value` is split and an unquoted `a,b,c` becomes three arguments - quoting works around all three).
+`tests/ParsingMatrix.tests.ps1` runs 300 calls directly and through `pstb` and compares them. Any change here must not lower its agreement count. The default gate excludes only exact `KnownIssue` inputs from `ParsingMatrix.KnownIssues.psd1`: 15 shared native mismatches (`--`, `-x:value`, unquoted commas) and two Linux-only quoted-glob mismatches (`E-071`, `E-072`). Controlled matching files make Linux glob failures reproducible. Expected matrix agreement is 285/300 on Windows and 283/300 on Linux; the correct-equivalence assertions remain unchanged for known defects.
 
 ### Tab Completion
 
@@ -251,7 +254,7 @@ Import-PowerStubConfiguration -Reset
 ### Pipeline Stages (in order)
 
 1. **validate** - Verify GitHub PAT has access to the mirror repo
-2. **test** - Run Pester tests in a Linux container (Windows-only EXE tests are skipped there; `ParsingMatrix` tests are excluded)
+2. **test** - Run Pester tests in a Linux container, including compiled native parsing cases. Only explicitly tagged `KnownIssue` tests are excluded; a missing native-matrix compiler fails CI
 3. **version** - Calculate next version from git tags + conventional commits (`scripts/get-version.ps1`)
 4. **mirror** - Tag the release, push the tag to GitLab, push code and tag to GitHub
 5. **publish** - Stamp the version into the manifest and publish a clean copy to PowerShell Gallery
@@ -360,7 +363,8 @@ Common scopes for this project: `config`, `commands`, `alias`, `completion`, `gi
 
 Command parsing is delicate: change it deliberately, and check the parsing matrix (see Argument Pass-Through).
 
-- The 15 parsing-matrix calls that still differ from a direct call: a bare `--` is removed by PowerShell before pstb sees it, and for executables `-x:value` is split and an unquoted `a,b,c` becomes three arguments. Quoting (`'--'`, `'-c:v'`, `'a,b,c'`) works around all three.
+- The 15 shared native parsing-matrix calls that still differ from a direct call: a bare `--` is removed by PowerShell before pstb sees it, and for executables `-x:value` is split and an unquoted `a,b,c` becomes three arguments. Quoting (`'--'`, `'-c:v'`, `'a,b,c'`) works around all three.
+- On Linux, the quoted native globs in `E-071` and `E-072` also expand through the proxy when matching files exist. Their exact inputs are tagged `KnownIssue` only on Linux; Windows continues to gate these cases.
 - By design, an explicit string array splat such as `@('-Name', 'x')` is passed as plain values, exactly as in a direct call. (pstb used to re-parse it into named parameters.) Forwarding the automatic `$args` with `@args` still carries parameter names.
 
 ## Code Style Guidelines
@@ -373,7 +377,7 @@ Command parsing is delicate: change it deliberately, and check the parsing matri
 
 ## Testing Approach
 
-Tests use Pester framework (`tests/*.tests.ps1`). Every test file sets `POWERSTUB_CONFIG_DIR` to a throwaway folder before importing the module, so tests never touch the real config - keep that in any new test file. `tests/ExecutionStatus.tests.ps1` gates success/failure status, pipeline chains, streams, and fresh-process exit behavior for script/native targets and direct aliases. `tests/ParsingMatrix.tests.ps1` runs 300 sample calls (`ParsingMatrix.cases.ps1`: scripts, a generic EXE group and real-world CLI command lines) both directly and through `pstb` and requires identical results; it is tagged `ParsingMatrix`, also excluded by default, and `./tests/Show-ParsingMatrix.ps1` summarizes the disagreements. Any change to argument parsing must not lower its agreement count. Key test areas:
+Tests use Pester framework (`tests/*.tests.ps1`). Every test file sets `POWERSTUB_CONFIG_DIR` to a throwaway folder before importing the module, so tests never touch the real config - keep that in any new test file. `tests/ExecutionStatus.tests.ps1` gates success/failure status, pipeline chains, streams, and fresh-process exit behavior for script/native targets and direct aliases. `tests/ParsingMatrix.tests.ps1` runs 300 sample calls (`ParsingMatrix.cases.ps1`: scripts, a generic EXE group and real-world CLI command lines) both directly and through `pstb` and requires identical results; it is tagged `ParsingMatrix` and its passing cases run by default. Only exact, platform-specific audited mismatches carry `KnownIssue`. Use `./dev-test.ps1 -Tag ParsingMatrix -IncludeKnownIssues` or `./tests/Show-ParsingMatrix.ps1` to include and inspect those failures. Linux native cases use an available C compiler, Windows uses .NET Framework `csc.exe`; local unsupported/missing-compiler runs skip native cases with a warning, while CI requires them. Any change to argument parsing must not lower its agreement count. Key test areas:
 
 - Configuration loading/saving
 - Stub registration/removal

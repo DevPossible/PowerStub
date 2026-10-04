@@ -230,6 +230,26 @@ pstb update DevOps
 
 ### Direct Aliases
 
+Direct alias names must be unused. PowerShell keywords, existing aliases, functions,
+cmdlets, native commands, and already saved direct aliases are rejected case-insensitively.
+`-Force` is retained for compatibility but never bypasses this check. To change a saved
+shortcut, remove it explicitly and create it again. Rejected adds leave commands and
+configuration unchanged.
+
+**Upgrading to 2.0:** `-Force` no longer refreshes or retargets an existing shortcut.
+Create each direct alias once; your profile should import PowerStub rather than rerun
+`New-PowerStubDirectAlias -Force` on every startup. To retarget an alias you own, use
+`Remove-PowerStubDirectAlias` first, then add the desired shortcut with an unused name.
+
+Saved shortcuts are restored only into free names when a session or profile loads the
+module. Legacy `ForcedDirectAliases` entries cannot override another command. Removing
+an alias, stub, or the module removes only the exact proxy function PowerStub created;
+a function the user replaced it with is left alone.
+
+A configured `InvokeAlias` that is reserved or already taken is skipped with a warning.
+PowerStub uses `pstb` only if that name is free; otherwise call `Invoke-PowerStubCommand`
+directly. Startup does not rewrite the saved configuration.
+
 Create shortcut aliases for frequently used stubs:
 
 | Command | Description |
@@ -239,14 +259,14 @@ Create shortcut aliases for frequently used stubs:
 
 ```powershell
 # Create a short alias for your DevOps stub
-New-PowerStubDirectAlias -AliasName "do" -Stub "DevOps"
+New-PowerStubDirectAlias -AliasName "dv" -Stub "DevOps"
 
 # Now use the shorter syntax
-do deploy-app -Environment prod    # Same as: pstb DevOps deploy-app -Environment prod
-do                                 # List commands in DevOps
+dv deploy-app -Environment prod    # Same as: pstb DevOps deploy-app -Environment prod
+dv                                 # List commands in DevOps
 
 # Remove the alias when no longer needed
-Remove-PowerStubDirectAlias -AliasName "do"
+Remove-PowerStubDirectAlias -AliasName "dv"
 ```
 
 Direct aliases are persisted and automatically restored when the module loads.
@@ -512,7 +532,7 @@ After making changes, reload the module to test:
 Use the `dev-test.ps1` script to run the Pester test suite:
 
 ```powershell
-# Run all tests with detailed output
+# Run the release gate (all tests except explicitly tagged known defects)
 .\dev-test.ps1
 
 # Run specific tests by name filter
@@ -523,6 +543,15 @@ Use the `dev-test.ps1` script to run the Pester test suite:
 
 # Skip module reload (if already loaded)
 .\dev-test.ps1 -SkipReload
+
+# Run passing parsing-matrix cases and metadata guards
+.\dev-test.ps1 -Tag ParsingMatrix
+
+# Audit the entire matrix, including known failing equivalence assertions
+.\dev-test.ps1 -Tag ParsingMatrix -IncludeKnownIssues
+
+# Run only explicitly tagged known defects
+.\dev-test.ps1 -Tag KnownIssue
 ```
 
 #### 5. Interactive Testing
@@ -564,6 +593,10 @@ Tests are located in `tests/*.tests.ps1`. They run against a throwaway config fo
 | Virtual Verbs | Search and help built-in commands |
 
 `tests/ExecutionStatus.tests.ps1` verifies `$?`, `&&`, `||`, `$LASTEXITCODE`, output streams, and fresh `pwsh -Command` process exits for scripts and native commands through both `pstb` and direct aliases. These regressions run in the regular test suite and CI.
+
+`tests/ParsingMatrix.tests.ps1` compares 300 identical direct/proxy inputs. The default gate includes every passing case, with only the exact inputs in `tests/ParsingMatrix.KnownIssues.psd1` tagged `KnownIssue`: 15 shared native mismatches plus two Linux-only quoted-glob mismatches (`E-071`, `E-072`). The original equivalence assertions remain active when explicitly requested. Metadata guards pin the audited IDs, argument text, platforms, and exclusion counts; matching temporary files make glob checks independent of your working directory.
+
+The native matrix compiles a temporary executable using .NET Framework `csc.exe` on Windows, or `cc`, `gcc`, or `clang` with C development headers on Linux. The Linux fixture checks actual argv; Windows also checks the raw command line. Without a supported compiler, local runs warn and skip native cases. GitLab CI installs the Linux compiler and sets `POWERSTUB_REQUIRE_NATIVE_MATRIX=1`, so missing native coverage fails the release gate. Matrix tests restore the original working directory and environment overrides.
 
 The `tests/sample_stub_root/` folder contains a pre-configured stub with various command types for integration testing.
 

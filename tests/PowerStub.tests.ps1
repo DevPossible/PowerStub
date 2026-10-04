@@ -705,9 +705,9 @@ Describe "New-PowerStubDirectAlias" {
             $cmd.CommandType | Should -Be 'Function'
         }
 
-        It "Should overwrite alias when -Force is specified" {
+        It "Should reject an existing owned alias even when -Force is specified" {
             New-PowerStubDirectAlias -AliasName "forcealias" -Stub "SampleStub"
-            { New-PowerStubDirectAlias -AliasName "forcealias" -Stub "SampleStub" -Force } | Should -Not -Throw
+            { New-PowerStubDirectAlias -AliasName "forcealias" -Stub "SampleStub" -Force } | Should -Throw "*already exists*"
         }
 
         It "Should return info object with AliasName, Stub, and StubPath" {
@@ -728,13 +728,13 @@ Describe "New-PowerStubDirectAlias" {
             $directAliases['configalias'] | Should -Be 'SampleStub'
         }
 
-        It "Should not rewrite config when the persisted alias already matches" {
+        It "Should reject a repeated add without rewriting matching persisted config" {
             New-PowerStubDirectAlias -AliasName "noopalias" -Stub "SampleStub"
             $configFile = InModuleScope PowerStub { Get-PowerStubConfigurationKey 'ConfigFile' }
             $before = Get-Item -LiteralPath $configFile
 
             Start-Sleep -Milliseconds 1200
-            New-PowerStubDirectAlias -AliasName "noopalias" -Stub "SampleStub" -Force
+            { New-PowerStubDirectAlias -AliasName "noopalias" -Stub "SampleStub" -Force } | Should -Throw "*already exists*"
 
             $after = Get-Item -LiteralPath $configFile
             $after.LastWriteTimeUtc | Should -Be $before.LastWriteTimeUtc

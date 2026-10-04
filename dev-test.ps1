@@ -12,6 +12,10 @@
 .PARAMETER Tag
     Run only tests with these tags.
 
+.PARAMETER IncludeKnownIssues
+    Include explicitly tagged known defects (expected to fail).
+    Selecting -Tag KnownIssue also runs those cases.
+
 .PARAMETER Output
     Pester output verbosity: None, Normal, Detailed, Diagnostic. Default: Detailed.
 
@@ -23,7 +27,7 @@
 
 .EXAMPLE
     .\dev-test.ps1
-    # Runs all tests with detailed output
+    # Runs the release gate, including all passing parsing matrix cases
 
 .EXAMPLE
     .\dev-test.ps1 -Filter "*Alpha*"
@@ -31,7 +35,15 @@
 
 .EXAMPLE
     .\dev-test.ps1 -Tag ParsingMatrix
-    # Runs the tests for known, unfixed bugs (expected to fail; excluded by default)
+    # Runs 283 Linux / 285 Windows passing calls, plus 2 metadata guards
+
+.EXAMPLE
+    .\dev-test.ps1 -Tag ParsingMatrix -IncludeKnownIssues
+    # Runs all 300 matrix cases, including known mismatches
+
+.EXAMPLE
+    .\dev-test.ps1 -Tag KnownIssue
+    # Runs only explicitly tagged known defects (expected to fail)
 
 .EXAMPLE
     .\dev-test.ps1 -Output Normal
@@ -44,6 +56,7 @@
 param(
     [string]$Filter,
     [string[]]$Tag,
+    [switch]$IncludeKnownIssues,
     [ValidateSet('None', 'Normal', 'Detailed', 'Diagnostic')]
     [string]$Output = 'Detailed',
     [switch]$PassThru,
@@ -83,10 +96,10 @@ if ($Filter) {
 if ($Tag) {
     $config.Filter.Tag = $Tag
 }
-else {
-    # The parsing matrix still includes known argument differences.
-    # Run it explicitly with: .\dev-test.ps1 -Tag ParsingMatrix
-    $config.Filter.ExcludeTag = 'ParsingMatrix'
+
+if (-not $IncludeKnownIssues -and 'KnownIssue' -notin $Tag) {
+    # Gate all other tests; opt out only explicitly tagged known defects.
+    $config.Filter.ExcludeTag = 'KnownIssue'
 }
 
 # Always enable PassThru so $result is populated for exit code checking
@@ -108,6 +121,6 @@ if ($PassThru) {
 }
 
 # Exit with appropriate code for CI
-if ($result.FailedCount -gt 0) {
+if ($result.Result -eq 'Failed') {
     exit 1
 }

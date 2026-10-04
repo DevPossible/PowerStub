@@ -197,32 +197,19 @@ Describe "Direct alias safety" {
         (Get-Command pwsh).CommandType | Should -Be 'Application'
     }
 
-    It "ImportModule_WithAliasTheUserForcedOverAnExistingCommand_RecreatesIt" {
-        # The user knowingly shadows a real command ('where' is reserved, so use another application)
-        # Applications are 'name.exe' on Windows and plain 'name' elsewhere; skip names PowerStub reserves
-        $app = Get-Command -CommandType Application | Where-Object {
-            $_.Name -match '^[a-zA-Z][a-zA-Z0-9_-]*(\.exe)?$' -and
-            -not (InModuleScope PowerStub -Parameters @{ N = [System.IO.Path]::GetFileNameWithoutExtension($_.Name) } { Test-PowerStubReservedName $N })
-        } | Select-Object -First 1
-        $aliasName = [System.IO.Path]::GetFileNameWithoutExtension($app.Name)
+    It "ImportModule_WithLegacyForcedAlias_DoesNotReplaceExistingCommandOrRewriteConfig" {
         Import-PowerStubConfiguration -Reset
         New-PowerStub -Name 'SampleStub' -Path $script:SampleStubRoot
-
-        try {
-            New-PowerStubDirectAlias -AliasName $aliasName -Stub 'SampleStub' -Force | Out-Null
-            (Get-PowerStubConfiguration)['ForcedDirectAliases'] | Should -Contain $aliasName
-
-            Import-Module $script:ModulePath -Force -WarningVariable loadWarnings -WarningAction SilentlyContinue
-
-            $loadWarnings | Should -BeNullOrEmpty
-            (Get-Command $aliasName).CommandType | Should -Be 'Function'
+        Edit-ConfigFileExternally {
+            param($c)
+            $c['DirectAliases'] = @{ pwsh = 'SampleStub' }
+            $c['ForcedDirectAliases'] = @('pwsh')
         }
-        finally {
-            Remove-PowerStubDirectAlias -AliasName $aliasName -ErrorAction SilentlyContinue
-        }
-
-        (Get-PowerStubConfiguration)['ForcedDirectAliases'] | Should -Not -Contain $aliasName
-        (Get-Command $aliasName).CommandType | Should -Be 'Application'
+        $before = [IO.File]::ReadAllText($script:ConfigFile)
+        $loadWarnings = @(Import-Module $script:ModulePath -Force 3>&1 | Where-Object { $_ -is [System.Management.Automation.WarningRecord] })
+        $loadWarnings | Should -Not -BeNullOrEmpty
+        (Get-Command pwsh).CommandType | Should -Be 'Application'
+        [IO.File]::ReadAllText($script:ConfigFile) | Should -Be $before
     }
 
     It "ImportModule_WithForcedAlias_DoesNotWriteTheConfigFile" {

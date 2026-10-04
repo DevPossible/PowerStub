@@ -34,13 +34,6 @@ function Remove-PowerStubDirectAlias {
         throw "Direct alias '$AliasName' not found in PowerStub configuration."
     }
 
-    # Remove the global function if it exists
-    $existingCmd = Get-Command $AliasName -ErrorAction SilentlyContinue
-    if ($existingCmd -and $existingCmd.CommandType -eq 'Function') {
-        Remove-Item "function:$AliasName" -ErrorAction SilentlyContinue
-        Write-Verbose "Removed function '$AliasName'"
-    }
-
     # Remove only this alias from config so other sessions' aliases are kept
     Update-PowerStubConfiguration {
         if ($Script:PSTBSettings['DirectAliases']) {
@@ -48,6 +41,8 @@ function Remove-PowerStubDirectAlias {
         }
         $Script:PSTBSettings['ForcedDirectAliases'] = @($Script:PSTBSettings['ForcedDirectAliases'] | Where-Object { $_ -and $_ -ne $AliasName })
     }
+
+    Unregister-PowerStubDirectAliasFunction $AliasName
 
     Write-Verbose "Removed direct alias '$AliasName' from configuration"
 }

@@ -52,9 +52,6 @@ function Remove-PowerStub {
     }
 
     foreach ($aliasName in $removedAliases) {
-        # Note: Remove-Item does nothing for a 'function:global:' path; the unqualified path works
-        if (Test-Path "function:$aliasName") {
-            Remove-Item "function:$aliasName" -Force
-        }
+        Unregister-PowerStubDirectAliasFunction $aliasName
     }
 }
