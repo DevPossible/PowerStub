@@ -5,8 +5,14 @@
 
 workflow:
   rules:
-    - if: '$CI_COMMIT_BRANCH == "main"'
-    - if: '$CI_PIPELINE_SOURCE == "web"'
+    # Release tags are pushed by mirror; never start a second release from that push.
+    - if: '$CI_COMMIT_TAG'
+      when: never
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    # An open MR already gets a test pipeline; avoid duplicate branch-push tests.
+    - if: '$CI_COMMIT_BRANCH != "main" && $CI_OPEN_MERGE_REQUESTS && $CI_PIPELINE_SOURCE == "push"'
+      when: never
+    - if: '$CI_COMMIT_BRANCH && ($CI_PIPELINE_SOURCE == "push" || $CI_PIPELINE_SOURCE == "web")'
     - when: never
 
 stages:
@@ -46,6 +52,10 @@ variables:
       curl --version | head -n 1
 
 validate_github:
+  # Release credentials are required only on main; branches/MRs run the test job.
+  rules: &release_rules
+    - if: '$CI_COMMIT_BRANCH == "main" && ($CI_PIPELINE_SOURCE == "push" || $CI_PIPELINE_SOURCE == "web")'
+    - when: never
   stage: validate
   image: alpine:latest
   before_script:
@@ -85,17 +95,17 @@ test:
     POWERSTUB_REQUIRE_NATIVE_MATRIX: "1"
   script:
     - |
-      # The native parsing matrix must execute on Linux, not silently skip 200 calls.
-      if ! command -v gcc >/dev/null 2>&1; then
+      # The native matrix must execute; jq runs offline release API response tests.
+      if ! command -v gcc >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
         if command -v apt-get >/dev/null 2>&1; then
           apt-get update
-          apt-get install -y gcc libc6-dev
+          apt-get install -y gcc libc6-dev jq
         elif command -v tdnf >/dev/null 2>&1; then
-          tdnf install -y gcc glibc-devel
+          tdnf install -y gcc glibc-devel jq
         elif command -v apk >/dev/null 2>&1; then
-          apk add --no-cache gcc musl-dev
+          apk add --no-cache gcc musl-dev jq
         else
-          echo "No supported package manager found to install the native matrix compiler."
+          echo "No supported package manager found to install the native matrix compiler and jq."
           exit 1
         fi
       fi
@@ -122,7 +132,7 @@ test:
         $config.Output.Verbosity = "Detailed"
         $config.TestResult.Enabled = $true
         $config.TestResult.OutputPath = "$env:TEST_RESULTS_PATH/testResults.xml"
-        $config.TestResult.OutputFormat = "NUnitXml"
+        $config.TestResult.OutputFormat = "JUnitXml"
 
         Import-Module "$env:MODULE_PATH/PowerStub.psd1" -Force
         Invoke-Pester -Configuration $config
@@ -136,6 +146,7 @@ test:
     expire_in: 30 days
 
 version:
+  rules: *release_rules
   stage: version
   extends: .powershell
   needs:
@@ -199,7 +210,11 @@ version:
             $compareUrl = "https://github.com/$env:GITHUB_REPO/commits/v${version}"
         }
 
+        $notesPath = Join-Path "$env:CI_PROJECT_DIR/release-notes" "$version.md"
+        $releaseNotes = if (Test-Path -LiteralPath $notesPath) { Get-Content -LiteralPath $notesPath -Raw } else { "" }
         $changelogLines = @(
+            $releaseNotes
+            ""
             "## Whats Changed"
             ""
             $commits
@@ -229,6 +244,7 @@ version:
     expire_in: 30 days
 
 mirror:
+  rules: *release_rules
   stage: mirror
   image: alpine:latest
   needs:
@@ -278,11 +294,14 @@ mirror:
       masked_git push github "v${VERSION}"
 
 publish:
+  rules: *release_rules
   stage: publish
   extends: .powershell
   needs:
     - job: version
       artifacts: true
+    - job: mirror
+      artifacts: false
   script:
     - |
       if ! command -v dotnet >/dev/null 2>&1; then
@@ -305,7 +324,6 @@ publish:
         }
 
         Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-        Update-ModuleManifest -Path "$env:MODULE_PATH/PowerStub.psd1" -ModuleVersion $env:VERSION
 
         $existing = Find-Module -Name PowerStub -RequiredVersion $env:VERSION -Repository PSGallery -ErrorAction SilentlyContinue
         if ($existing) {
@@ -313,15 +331,17 @@ publish:
             return
         }
 
-        # Publish from a clean copy so development-only files do not ship in the package
-        $stagePath = Join-Path ([System.IO.Path]::GetTempPath()) "publish/PowerStub"
-        New-Item -Path $stagePath -ItemType Directory -Force | Out-Null
-        Copy-Item -Path "$env:MODULE_PATH/*" -Destination $stagePath -Recurse -Exclude "*.pssproj", ".gitignore"
+        # Build and verify the exact artifact uploaded, without modifying the checkout.
+        $stagePath = Join-Path ([System.IO.Path]::GetTempPath()) ("publish-" + [guid]::NewGuid() + "/PowerStub")
+        & "$env:CI_PROJECT_DIR/scripts/stage-module.ps1" -DestinationPath $stagePath -Version $env:VERSION
+        & (Join-Path $PSHOME "pwsh") -NoProfile -File "$env:CI_PROJECT_DIR/scripts/test-staged-module.ps1" -ModulePath $stagePath -ExpectedVersion $env:VERSION
+        if ($LASTEXITCODE -ne 0) { throw "Staged package smoke test failed." }
 
         Publish-Module -Path $stagePath -NuGetApiKey $env:PSGALLERY_API_KEY -Verbose
       '
 
 github_release:
+  rules: *release_rules
   stage: release
   image: alpine:latest
   needs:
@@ -332,36 +352,4 @@ github_release:
   before_script:
     - apk add --no-cache curl jq
   script:
-    - |
-      set -eu
-
-      if [ "$SHOULD_RELEASE" != "true" ]; then
-        echo "No release needed for v${VERSION}."
-        exit 0
-      fi
-
-      body="$(jq -Rs . < changelog.md)"
-      payload="$(jq -n \
-        --arg tag "v${VERSION}" \
-        --arg name "PowerStub v${VERSION}" \
-        --argjson body "${body}" \
-        '{ tag_name: $tag, name: $name, body: $body, draft: false, prerelease: false }')"
-
-      status="$(curl -s -o response.json -w "%{http_code}" \
-        -X POST \
-        -H "Authorization: token ${GITHUB_PAT}" \
-        -H "Accept: application/vnd.github.v3+json" \
-        -H "Content-Type: application/json" \
-        "https://api.github.com/repos/${GITHUB_REPO}/releases" \
-        -d "${payload}")"
-
-      if [ "$status" = "201" ]; then
-        echo "Created GitHub release v${VERSION}."
-      elif [ "$status" = "422" ]; then
-        echo "GitHub release v${VERSION} already exists. Treating as success."
-        cat response.json
-      else
-        echo "Failed to create GitHub release. HTTP ${status}"
-        cat response.json
-        exit 1
-      fi
+    - sh scripts/create-github-release.sh

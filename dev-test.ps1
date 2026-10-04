@@ -35,11 +35,11 @@
 
 .EXAMPLE
     .\dev-test.ps1 -Tag ParsingMatrix
-    # Runs 283 Linux / 285 Windows passing calls, plus 2 metadata guards
+    # Runs 305 Linux / 307 expected Windows passing matrix/workaround/guard tests
 
 .EXAMPLE
     .\dev-test.ps1 -Tag ParsingMatrix -IncludeKnownIssues
-    # Runs all 300 matrix cases, including known mismatches
+    # Runs all 322 matrix, workaround and guard tests, including known mismatches
 
 .EXAMPLE
     .\dev-test.ps1 -Tag KnownIssue

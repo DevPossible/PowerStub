@@ -31,15 +31,17 @@ pstb DevOps deploy-app -Environment prod
 
 - **Namespace Organization**: Group related tools under logical stub names
 - **Tab Completion**: Full IntelliSense for stub names, commands, and parameters
-- **Transparent Arguments**: Everything after the command is passed to the target exactly as typed, so tool flags like `-c`, `-o` or `-v` always reach it
+- **Argument Forwarding**: Pass target arguments and tool flags such as `-c`, `-o`, and `-v` through a namespaced command. See [Argument behavior](#argument-behavior) for quoting and automation guidance
 - **Multi-format Support**: Works with `.ps1` scripts and `.exe` executables
 - **Lifecycle Prefixes**: Built-in support for `alpha.*` and `beta.*` command stages
 - **Zero PATH Pollution**: Single alias (`pstb`) provides access to all your tools
 - **Built-in Commands**: Search across stubs and get help for any command
 - **Direct Aliases**: Create shortcut aliases for frequently used stubs
-- **Git Integration**: Automatic detection and updates for Git-based stub repositories
+- **Git Integration**: Detect Git-based stub repositories and explicitly check or pull updates
 
 ## Installation
+
+Requires **PowerShell 7.0 or later** (`pwsh`), not Windows PowerShell 5.1. Git is optional and is required only for Git-backed stub features.
 
 ### Option 1: From PowerShell Gallery (Recommended)
 
@@ -56,36 +58,33 @@ Import-Module PowerStub
 Add-Content $PROFILE "`nImport-Module PowerStub"
 ```
 
-### Option 2: From GitHub Release
+### Option 2: From a GitHub Source Archive
 
-Download a specific release from [GitHub Releases](https://github.com/DevPossible/power-stub/releases):
+[GitHub Releases](https://github.com/DevPossible/power-stub/releases) provides automatic **Source code (zip)** archives. These are source snapshots, not separately built module ZIP assets.
 
-1. Download the latest release `.zip` file
-2. Extract to a folder (e.g., `C:\Modules\PowerStub`)
-3. Import the module:
+1. Select the release tag you want and download **Source code (zip)**.
+2. Extract it. For example, a `v2.0.0` archive extracts to `power-stub-2.0.0/`.
+3. Import the manifest in the **nested** `PowerStub/` module directory:
 
 ```powershell
-# Import from extracted location
-Import-Module C:\Modules\PowerStub\PowerStub.psd1
-
-# Add to your PowerShell profile for persistent use
-Add-Content $PROFILE "`nImport-Module 'C:\Modules\PowerStub\PowerStub.psd1'"
+Import-Module 'C:\Modules\power-stub-2.0.0\PowerStub\PowerStub.psd1'
 ```
+
+Replace `2.0.0` with the archive's actual tag. The source manifest has a development baseline version; CI stamps the Gallery package separately. Record the selected tag (or commit for a Git checkout) as the source identity. Use the Gallery package if you need `Get-Module PowerStub` to report the published release version.
 
 ### Option 3: From Source (Development)
 
 Clone the repository for development or to get the latest changes:
 
 ```powershell
-# Clone the repository
 git clone https://github.com/DevPossible/power-stub.git
+Import-Module ./power-stub/PowerStub/PowerStub.psd1
 
-# Import the module from source
-Import-Module ./power-stub/PowerStub/PowerStub.psm1
-
-# Add to your PowerShell profile for persistent use
-Add-Content $PROFILE "`nImport-Module 'C:\path\to\power-stub\PowerStub\PowerStub.psm1'"
+# Record the exact source revision
+git -C ./power-stub rev-parse HEAD
 ```
+
+Use the manifest for ordinary imports so the PowerShell requirement and public export list are enforced.
 
 ### Making PowerStub Available in Every Session
 
@@ -184,6 +183,25 @@ pstb DevOps deploy-app -Env<TAB>  # Completes to "-Environment"
 # Execute the command
 pstb DevOps deploy-app -Environment prod -Version 2.0.1
 ```
+
+### Argument behavior
+
+For ordinary script parameters and native flags, use `pstb DevOps deploy-app -Environment prod` or a direct alias. Proxy calls run through a PowerShell function boundary, so native parsing is not identical in every case:
+
+- A bare `--` is removed before the proxy sees it; quote it as `'--'` when you need that argument.
+- Quote native colon-form flags and comma-containing values, for example `'-c:v'` and `'a,b,c'`.
+- On Linux, quoted native globs can still expand through a proxy when matching files exist. Caller-local `$PSNativeCommandArgumentPassing` preferences can also differ inside a module proxy.
+
+When exact native parsing matters, resolve the command and invoke it directly in your caller scope. This preserves the original native argument processing, output streams, and exit status:
+
+```powershell
+# Resolve a registered native tool, then call it directly
+& (Get-PowerStubCommand -Stub DevOps -Command terraform).Path plan -out=tfplan
+```
+
+Use that form for the edge cases above or native tools sensitive to argument-passing modes. The regression suite retains 15 shared native mismatches and two additional Linux quoted-glob mismatches as explicit known issues; the resolved-path form is tested against all 17 inputs. These limitations apply to both `pstb` and direct aliases.
+
+Proxy failure status is covered by tests for `$?`, `&&`, `||`, and `$LASTEXITCODE`. As with a direct native command, use the tool's documented exit codes to decide whether to continue automation. An explicit string array splat such as `@('-Name', 'x')` stays ordinary string values; use PowerShell's normal named-argument syntax for script parameters.
 
 ## Core Commands
 
@@ -302,7 +320,26 @@ Set-PowerStubCommandVisibility -Stub DevOps -Command deploy -Visibility Producti
 
 ## Configuration File
 
-PowerStub stores its configuration in `PowerStub.json`, located in the module directory (alongside `PowerStub.psm1`):
+PowerStub stores registrations and settings in a version-independent `config.json`:
+
+- `$env:POWERSTUB_CONFIG_DIR/config.json` when that override is set before import
+- `$env:APPDATA/PowerStub/config.json` when `APPDATA` is set (normally Windows)
+- `$HOME/.config/powerstub/config.json` otherwise
+
+Use the exported command to find the actual file:
+
+```powershell
+$configPath = Get-PowerStubConfiguration -Key ConfigFile
+$configPath
+# A file is created when you first save a registration or setting.
+if (Test-Path -LiteralPath $configPath) {
+    Copy-Item -LiteralPath $configPath -Destination "$configPath.backup"
+}
+```
+
+Back up this file before resetting or manually changing it. `Import-PowerStubConfiguration -Reset` saves defaults and clears registrations, direct aliases, and customized settings; it does not delete your tool folders. Start a new PowerShell session after a reset so restored shortcuts and module-load settings match the file. When no current file exists, an older module-local `PowerStub.json` with registrations can be migrated automatically; the legacy source is retained. Configuration is not stored beside the installed module.
+
+The persisted JSON looks like this (Git-backed stubs can instead store a `Path` and `GitRepoUrl` object):
 
 ```json
 {
@@ -324,7 +361,7 @@ PowerStub stores its configuration in `PowerStub.json`, located in the module di
 | `InvokeAlias` | String | `pstb` | Alias for `Invoke-PowerStubCommand` |
 | `EnablePrefix:Alpha` | Boolean | `false` | Include `alpha.*` prefixed commands |
 | `EnablePrefix:Beta` | Boolean | `false` | Include `beta.*` prefixed commands |
-| `GitEnabled` | Boolean | `true` | Enable Git integration (auto-detected on load) |
+| `GitEnabled` | Boolean | `true` | Allow Git integration when Git is installed; loaded when the module imports |
 
 ## Command Lifecycle
 
@@ -370,13 +407,19 @@ When you register a new stub with `New-PowerStub`, PowerStub automatically detec
 New-PowerStub -Name "DevOps" -Path "C:\Tools\DevOps"
 ```
 
-### Update Notifications
+### Checking for Updates
 
-When the PowerStub module loads, it checks each Git-tracked stub to see if it's behind the remote repository:
+Importing PowerStub does **not** fetch or check repositories. Run a check explicitly:
 
-```text
-Stub 'DevOps' is 5 commit(s) behind the remote repo. Run 'pstb update DevOps' to update.
+```powershell
+# Check all Git-tracked stubs without pulling
+pstb update --check
+
+# Check one stub
+pstb update DevOps --check
 ```
+
+These commands contact the configured remotes. An unsuccessful fetch cannot establish whether a repository is current.
 
 ### Updating Repositories
 
@@ -392,15 +435,25 @@ pstb update DevOps
 
 ### Configuration
 
-Git integration is enabled by default when Git is available. You can disable it:
+Git integration is enabled by default when Git is available. There is no exported generic setting-change command. To disable it, close other PowerShell sessions that may write the shared config, then run this in the remaining session:
 
+<!-- smoke:git-setting:start -->
 ```powershell
-# Disable Git integration
-Set-PowerStubConfigurationKey 'GitEnabled' $false
-
-# Re-enable Git integration
-Set-PowerStubConfigurationKey 'GitEnabled' $true
+$configPath = Get-PowerStubConfiguration -Key ConfigFile
+$moduleManifest = Join-Path (Get-Module PowerStub).ModuleBase 'PowerStub.psd1'
+$config = @{}
+if (Test-Path -LiteralPath $configPath) {
+    Copy-Item -LiteralPath $configPath -Destination "$configPath.backup" -Force
+    $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json -AsHashtable
+}
+$config['GitEnabled'] = $false
+$config | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $configPath
+Remove-Module PowerStub
+Import-Module $moduleManifest
 ```
+<!-- smoke:git-setting:end -->
+
+To re-enable it, repeat with `$config['GitEnabled'] = $true`. Reimport is required because Git availability/enabled flags are initialized at module load. Prefer public registration and feature-toggle commands for normal changes; they use the module's cross-session locking rather than replacing the whole file.
 
 ## Examples
 
@@ -459,8 +512,7 @@ PowerStub/                          # Repository root
 │   ├── private/functions/          # Internal helper functions
 │   ├── Templates/                  # Command templates
 │   ├── PowerStub.psm1              # Module loader
-│   ├── PowerStub.psd1              # Module manifest
-│   └── PowerStub.json              # Legacy config placeholder (the live config is %APPDATA%/PowerStub/config.json)
+│   └── PowerStub.psd1              # Module manifest (live config is stored separately)
 ├── tests/                          # Pester test files
 │   ├── PowerStub.tests.ps1         # Main test suite
 │   ├── ConfigSafety.tests.ps1      # Config persistence, concurrency and alias safety
@@ -479,8 +531,9 @@ This section covers local development and testing of the PowerStub module.
 
 ### Prerequisites
 
-- PowerShell 5.1 or later
+- PowerShell 7.0 or later (`pwsh`)
 - [Pester](https://pester.dev/) v5.x or later for running tests
+- On Linux, `sh` and `jq` for offline release API tests; a C compiler and headers for the full native parsing matrix (CI installs these)
 
 ```powershell
 # Install Pester if not already installed
@@ -594,7 +647,7 @@ Tests are located in `tests/*.tests.ps1`. They run against a throwaway config fo
 
 `tests/ExecutionStatus.tests.ps1` verifies `$?`, `&&`, `||`, `$LASTEXITCODE`, output streams, and fresh `pwsh -Command` process exits for scripts and native commands through both `pstb` and direct aliases. These regressions run in the regular test suite and CI.
 
-`tests/ParsingMatrix.tests.ps1` compares 300 identical direct/proxy inputs. The default gate includes every passing case, with only the exact inputs in `tests/ParsingMatrix.KnownIssues.psd1` tagged `KnownIssue`: 15 shared native mismatches plus two Linux-only quoted-glob mismatches (`E-071`, `E-072`). The original equivalence assertions remain active when explicitly requested. Metadata guards pin the audited IDs, argument text, platforms, and exclusion counts; matching temporary files make glob checks independent of your working directory.
+`tests/ParsingMatrix.tests.ps1` compares 300 identical direct/`pstb`/direct-alias inputs. The default gate includes every passing case, with only the exact inputs in `tests/ParsingMatrix.KnownIssues.psd1` tagged `KnownIssue`: 15 shared native mismatches plus two Linux-only quoted-glob mismatches (`E-071`, `E-072`). The original equivalence assertions remain active when explicitly requested. It also gates 17 direct resolved-path workarounds and three caller-local native preference cases, for 322 total tests including two metadata guards. The Linux matrix gate passes 305 tests with 17 known issues excluded; the expected Windows gate is 307 with 15 excluded and requires a Windows run to verify. Metadata guards pin the audited IDs, argument text, platforms, and exclusion counts; matching temporary files make glob checks independent of your working directory.
 
 The native matrix compiles a temporary executable using .NET Framework `csc.exe` on Windows, or `cc`, `gcc`, or `clang` with C development headers on Linux. The Linux fixture checks actual argv; Windows also checks the raw command line. Without a supported compiler, local runs warn and skip native cases. GitLab CI installs the Linux compiler and sets `POWERSTUB_REQUIRE_NATIVE_MATRIX=1`, so missing native coverage fails the release gate. Matrix tests restore the original working directory and environment overrides.
 
@@ -607,19 +660,20 @@ The `tests/sample_stub_root/` folder contains a pre-configured stub with various
 3. **Add tests**: Add to the matching file in `tests/`
 4. **Update documentation**: Update README.md and CLAUDE.md
 
-Functions are automatically loaded by the module - no manifest changes needed.
+Functions are automatically loaded by the module, but a new public function must also be added to `FunctionsToExport` in `PowerStub/PowerStub.psd1`. Test the manifest import, not just the `.psm1`, to catch missing exports. Private helpers must stay out of the manifest export list.
 
 ### Code Style
 
 - Use approved PowerShell verbs (`Get-`, `Set-`, `New-`, etc.)
 - Prefix public functions with `PowerStub`
-- Include `[CmdletBinding()]` on all functions
+- Use `[CmdletBinding()]` for ordinary advanced functions when appropriate. Keep `Invoke-PowerStubCommand` and generated transparent proxy functions simple, without a parameter block or common parameters, so target flags are not consumed by the proxy
 - Use `$Script:` scope for module-level variables
 
 ## Requirements
 
-- PowerShell 5.1 or later
-- Windows (primary support)
+- PowerShell 7.0 or later (`pwsh`)
+- Windows (primary platform) and Linux
+- CI currently gates Linux. Windows release validation must be run separately; the old Azure pipeline is disabled
 
 ## License
 
@@ -631,6 +685,8 @@ DevPossible LLC
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit issues and pull requests.
+Contributions are welcome through [GitHub issues and pull requests](https://github.com/DevPossible/power-stub). GitHub is the public mirror; the authoritative repository and release pipeline run in private GitLab. Maintainers review public contributions and import accepted changes there, then the release pipeline mirrors them back to GitHub. Public GitHub activity alone does not establish the private pipeline's status.
+
+For a reproducible bug report, include your OS, `$PSVersionTable.PSVersion`, module version and install method, a minimal command, and its direct-versus-proxy output. Remove credentials and private paths before posting.
 
 See the [Development](#development) section above for local setup, testing, and code style guidelines.

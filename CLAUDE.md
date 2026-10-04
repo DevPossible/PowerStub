@@ -17,8 +17,7 @@ PowerStub/                        # Repository root
 │   ├── private/functions/        # Internal helper functions
 │   ├── Templates/                # Command templates
 │   ├── PowerStub.psm1            # Module loader (dot-sources all functions)
-│   ├── PowerStub.psd1            # Module manifest (version is stamped by CI from git tags)
-│   └── PowerStub.json            # Legacy config placeholder (live config: %APPDATA%/PowerStub/config.json)
+│   └── PowerStub.psd1            # Module manifest (version stamped in the CI package; config stored separately)
 ├── .gitlab-ci.yml                # ACTIVE release pipeline (GitLab CI)
 ├── pipelines/                    # Azure DevOps Pipelines
 │   └── release.yml               # DISABLED - kept for reference
@@ -69,7 +68,7 @@ PowerStub/                        # Repository root
 | `Get-PowerStubConfigurationKey.ps1` | Config | Gets single config value |
 | `Set-PowerStubConfigurationKey.ps1` | Config | Sets single config key |
 | `Set-PowerStubConfiguration.ps1` | Config | Sets entire config object |
-| `Export-PowerStubConfiguration.ps1` | Config | Saves config to PowerStub.json |
+| `Export-PowerStubConfiguration.ps1` | Config | Saves config to the version-independent config.json |
 | `Get-PowerStubGitInfo.ps1` | Git | Gets git repo info for a path |
 | `Update-PowerStubGitRepo.ps1` | Git | Updates a git repo (git pull) |
 | `Get-PowerStubPath.ps1` | Utility | Extracts path from stub config (string or hashtable) |
@@ -87,10 +86,10 @@ PowerStub/                        # Repository root
 
 1. Discovers all `.ps1` files in `public/functions/` and `private/functions/` (lowercase - this matters on Linux)
 2. Dot-sources each file to load functions into module scope
-3. Loads configuration defaults, then imports `PowerStub.json`
-4. Exports only public functions
+3. Loads configuration defaults, then imports the configured `config.json` (with legacy migration when needed)
+4. Exports only public functions; normal manifest imports also enforce `FunctionsToExport`
 5. Creates `pstb` alias for `Invoke-PowerStubCommand`
-6. Registers ArgumentCompleters for `-Stub` and `-Command` parameters
+6. Wraps `TabExpansion2` to complete stubs, commands, and target parameters
 7. Re-registers saved direct aliases from configuration
 
 ### Virtual Verbs
@@ -116,11 +115,7 @@ PowerStub integrates with Git to track and update stub repositories:
 When creating a new stub with `New-PowerStub`, if git is enabled and the path is part of a git repository, the remote URL is automatically saved in the configuration.
 
 **Module load behavior:**
-On module load, each stub's git repo is checked. If the repo is behind the remote, a warning is displayed:
-
-```text
-Stub 'DevOps' is 5 commit(s) behind the remote repo. Run 'pstb update DevOps' to update.
-```
+Import checks whether Git is installed but never fetches or checks remote status. Users explicitly run `pstb update --check` or `pstb update <stub> --check`. Fetch failures must be reported rather than described as up to date.
 
 **Update command:**
 
@@ -161,7 +156,7 @@ dv deploy  # Same as: pstb DevOps deploy
 - `-Switch:$false` is the one form a splat cannot carry; `Invoke-CheckedCommand` moves those pairs into a named splat.
 - `Resolve-PowerStubInvocation` decides which tokens are the stub and command (positional, or the full names `-Stub`/`-Command` before the target's arguments). Execution and completion both use it.
 
-`tests/ParsingMatrix.tests.ps1` runs 300 calls directly and through `pstb` and compares them. Any change here must not lower its agreement count. The default gate excludes only exact `KnownIssue` inputs from `ParsingMatrix.KnownIssues.psd1`: 15 shared native mismatches (`--`, `-x:value`, unquoted commas) and two Linux-only quoted-glob mismatches (`E-071`, `E-072`). Controlled matching files make Linux glob failures reproducible. Expected matrix agreement is 285/300 on Windows and 283/300 on Linux; the correct-equivalence assertions remain unchanged for known defects.
+`tests/ParsingMatrix.tests.ps1` runs 300 calls directly and through both `pstb` and direct aliases and compares them. Any change here must not lower its agreement count. The default gate excludes only exact `KnownIssue` inputs from `ParsingMatrix.KnownIssues.psd1`: 15 shared native mismatches (`--`, `-x:value`, unquoted commas) and two Linux-only quoted-glob mismatches (`E-071`, `E-072`). Controlled matching files make Linux glob failures reproducible. Expected matrix agreement is 285/300 on Windows and 283/300 on Linux; the correct-equivalence assertions remain unchanged for known defects.
 
 ### Tab Completion
 
@@ -175,7 +170,7 @@ Because `pstb` declares no parameters, PowerShell has nothing to complete from, 
 ### Configuration Management
 
 - Config stored in `$Script:PSTBSettings` hashtable
-- Persisted to `%APPDATA%/PowerStub/config.json` (excludes internal keys); `POWERSTUB_CONFIG_DIR` overrides the folder
+- Persisted to `%APPDATA%/PowerStub/config.json` when APPDATA is set, otherwise `$HOME/.config/powerstub/config.json` (excludes internal keys); `POWERSTUB_CONFIG_DIR` overrides the folder
 - Many sessions share this file. Rules that keep it from being wiped or overwritten:
   - Module load must NEVER write the config file
   - Change persisted settings only through `Update-PowerStubConfiguration` (lock, reload, change one entry, write). Never modify a copy of `Stubs`/`DirectAliases` and save the whole thing - that erases other sessions' changes
@@ -226,7 +221,7 @@ The prefix is transparent to the user - they always type the unprefixed name.
 
 ```powershell
 # Import module for development
-Import-Module ./PowerStub/PowerStub.psm1 -Force
+Import-Module ./PowerStub/PowerStub.psd1 -Force
 
 # Run Pester tests
 Invoke-Pester ./tests/
@@ -249,7 +244,7 @@ Import-PowerStubConfiguration -Reset
 
 | Pipeline | Trigger | Purpose |
 |----------|---------|---------|
-| `.gitlab-ci.yml` | Push to main | Test, version, tag, mirror to GitHub, publish to PSGallery, create GitHub release |
+| `.gitlab-ci.yml` | Push to main or manual run on main | Test, version, tag, mirror to GitHub, publish to PSGallery, create GitHub release |
 
 ### Pipeline Stages (in order)
 
@@ -257,10 +252,24 @@ Import-PowerStubConfiguration -Reset
 2. **test** - Run Pester tests in a Linux container, including compiled native parsing cases. Only explicitly tagged `KnownIssue` tests are excluded; a missing native-matrix compiler fails CI
 3. **version** - Calculate next version from git tags + conventional commits (`scripts/get-version.ps1`)
 4. **mirror** - Tag the release, push the tag to GitLab, push code and tag to GitHub
-5. **publish** - Stamp the version into the manifest and publish a clean copy to PowerShell Gallery
-6. **release** - Create GitHub release with changelog
+5. **publish** - After successful mirroring, stage a clean version-stamped package with license and README, run a fresh-process smoke test, then publish to PowerShell Gallery
+6. **release** - Create GitHub release with version-specific `release-notes/<version>.md` (when present) followed by the generated changelog; a 422 response is only accepted after verifying an existing published release with that exact tag
 
-The version comes ONLY from git tags and commit messages. `ModuleVersion` in `PowerStub.psd1` is overwritten by CI at publish time and is never committed back, so it just records the last release.
+The release version comes from git tags and commit messages. `ModuleVersion` in the source manifest is a development baseline, not necessarily the last release. `scripts/stage-module.ps1` stamps only the publish copy and uses a tag-specific license URL; the source manifest stays untouched. GitHub automatic source archives retain that baseline and the nested repository layout.
+
+The six-job release flow stays on main push/manual pipelines. Branch pushes, manual branch runs, and merge requests run only the test job, which needs no release credentials or GitHub validation. Keep all release credentials protected in GitLab. An open MR suppresses duplicate non-main push tests. Tag-triggered pipelines are rejected; pushing the release tag back to GitLab must not launch a duplicate release pipeline. `publish.needs` explicitly includes `mirror`: GitLab DAG dependencies otherwise bypass stage ordering. Existing tags at HEAD are reused so a failed downstream publish/release can be retried without incrementing the version.
+
+`test` emits `JUnitXml` for GitLab's JUnit report importer. Package/documentation tests stage a disposable artifact and launch a new `pwsh` process. The publish job repeats the smoke against its exact version-stamped staging directory before upload. The repository currently has no enabled Windows runner; do not claim Windows CI coverage or enable the disabled Azure file without runner/permission review. Container images and tool ranges are unchanged by this correction.
+
+For a local package smoke check (no upload):
+
+```powershell
+$stage = Join-Path ([IO.Path]::GetTempPath()) ("powerstub-stage-" + [guid]::NewGuid() + "/PowerStub")
+./scripts/stage-module.ps1 -DestinationPath $stage -Version 2.0.0
+pwsh -NoProfile -File ./scripts/test-staged-module.ps1 -ModulePath $stage -ExpectedVersion 2.0.0
+```
+
+This does not exercise Gallery authentication, NuGet upload, GitLab permissions, or GitHub release APIs. Validate those in the authorized release pipeline and inspect the Tests view after the first corrected JUnit run.
 
 ### Required Secrets
 
@@ -346,7 +355,8 @@ Common scopes for this project: `config`, `commands`, `alias`, `completion`, `gi
 
 1. Create file in `PowerStub/public/functions/` (lowercase)
 2. Follow naming convention: `Verb-PowerStub*.ps1`
-3. Function is auto-exported via module loader
+3. Add the public function name to `FunctionsToExport` in `PowerStub/PowerStub.psd1`
+4. Import the manifest and verify the installed public export in tests
 
 ### Adding a New Private Function
 
@@ -365,6 +375,7 @@ Command parsing is delicate: change it deliberately, and check the parsing matri
 
 - The 15 shared native parsing-matrix calls that still differ from a direct call: a bare `--` is removed by PowerShell before pstb sees it, and for executables `-x:value` is split and an unquoted `a,b,c` becomes three arguments. Quoting (`'--'`, `'-c:v'`, `'a,b,c'`) works around all three.
 - On Linux, the quoted native globs in `E-071` and `E-072` also expand through the proxy when matching files exist. Their exact inputs are tagged `KnownIssue` only on Linux; Windows continues to gate these cases.
+- For exact native behavior use `& (Get-PowerStubCommand -Stub Tools -Command tool).Path <native arguments>` in caller scope. `tests/ParsingMatrix.tests.ps1` tests the 17 audited inputs and argument-passing preference context; both `pstb` and direct aliases remain subject to the function-boundary limitations. Never reconstruct executable source from arguments to guess lost quoting.
 - By design, an explicit string array splat such as `@('-Name', 'x')` is passed as plain values, exactly as in a direct call. (pstb used to re-parse it into named parameters.) Forwarding the automatic `$args` with `@args` still carries parameter names.
 
 ## Code Style Guidelines
@@ -372,7 +383,7 @@ Command parsing is delicate: change it deliberately, and check the parsing matri
 - Use approved PowerShell verbs (Get-, Set-, New-, Remove-, Enable-, Disable-, Invoke-, Import-, Export-)
 - Prefix all public functions with `PowerStub` (e.g., `Get-PowerStubs`)
 - Use `$Script:` scope for module-level variables
-- Include `[CmdletBinding()]` on all functions
+- Use `[CmdletBinding()]` for ordinary advanced functions as appropriate; keep transparent invocation/proxy functions simple to avoid consuming target flags
 - Use argument completers for better UX
 
 ## Testing Approach
@@ -434,7 +445,7 @@ Use the **Plan** agent for:
 
 ```powershell
 # Reload module after changes
-Import-Module ./PowerStub/PowerStub.psm1 -Force
+Import-Module ./PowerStub/PowerStub.psd1 -Force
 
 # Test tab completion
 pstb <Tab>                    # Should list stubs
