@@ -6,7 +6,8 @@
   Invoke-PowerStubCommand declares no parameters, so that nothing meant for the target
   command is ever bound to pstb itself. This function does the little parsing pstb needs:
   the stub and command are the first two tokens, and everything after them belongs to
-  the target, untouched.
+  the target as already-bound PowerShell values. This cannot restore syntax consumed
+  by PowerShell before the function was called.
 
   For backward compatibility the stub and command can also be given by name, but only
   with the full names -Stub and -Command and only before the target's arguments:

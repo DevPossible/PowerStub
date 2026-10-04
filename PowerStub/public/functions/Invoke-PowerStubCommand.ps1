@@ -11,10 +11,16 @@
   mapping to actual command files.
 
   This function deliberately declares no parameters. The first argument is the stub, the
-  second is the command, and everything after that is handed to the target exactly as typed.
+  second is the command, and everything after that is forwarded as PowerShell argument values.
   (-Stub and -Command are still accepted by their full names, before the target's arguments.)
   Tab completion for stubs, commands and the target's own parameters is provided by the
   module's TabExpansion2 wrapper.
+
+  PowerShell parses a function call before this proxy runs. For native commands that means
+  bare -- separators, unquoted comma lists, colon-style options and quoted wildcard patterns
+  may differ from a direct native invocation. To keep the native parser and the caller's
+  native argument-passing preferences, resolve the command and invoke its Path directly:
+      & (Get-PowerStubCommand -Stub Tools -Command tool).Path <arguments>
 
 .INPUTS
   None. You cannot pipe objects to this function.
@@ -51,9 +57,11 @@ function Invoke-PowerStubCommand {
     # -flag against them and against the function's own parameters by prefix. For a proxy
     # that is fatal: 'dotnet build -c Release' binds -c to -Command, 'curl -o file' fails as
     # ambiguous (-OutVariable/-OutBuffer), and -v, -d, -e, -i, -p and -w are swallowed or
-    # rejected before any of this code runs. With no parameters, every argument arrives in
-    # $args untouched and is splatted to the target, which keeps named parameters
+    # rejected before any of this code runs. With no parameters, bound argument values
+    # arrive in $args and are splatted to the target, which keeps named parameters
     # (-Name x, -Count:5, -Force) working for script targets.
+    # Function binding still discards some native-only syntax; do not try to infer that
+    # syntax from argument values or reconstruct and evaluate the caller's source text.
     #
     # tests/ParsingMatrix.tests.ps1 compares 300 calls through pstb with direct calls. Do not
     # change how arguments flow here without checking that its agreement count does not drop.

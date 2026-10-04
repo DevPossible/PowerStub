@@ -1,7 +1,7 @@
 # echo-params.ps1 - script fixture for the parsing matrix (tests/ParsingMatrix.tests.ps1).
 #
-# A script with a declared param block. pstb reads these parameters to build its dynamic
-# parameters, so this is the path where named-parameter binding gets tested. Prints one
+# A script with a declared param block. The target binds its own named parameters after
+# pstb forwards its arguments, so this is the named-parameter binding oracle. Prints one
 # line of JSON with every bound parameter and its type:
 #
 #   {"Bound":[{"Name":"Count","Type":"Int32","Value":"5"},{"Name":"Name","Type":"String","Value":"a"}]}

@@ -27,7 +27,8 @@ function Register-PowerStubDirectAlias {
     $escapedStub = $Stub -replace "'", "''"
 
     # A simple function with no parameters, for the same reason as Invoke-PowerStubCommand:
-    # nothing meant for the target may be bound here. @args forwards every argument untouched.
+    # avoid binding target options as proxy parameters. @args preserves the bound values;
+    # native-only syntax already consumed by PowerShell cannot be reconstructed here.
     $functionBody = @"
     if (`$args.Count -eq 0) {
         # List commands

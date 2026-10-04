@@ -5,7 +5,7 @@
 
 .DESCRIPTION
     The cases live in ParsingMatrix.cases.ps1. For every case the same argument text is run
-    twice:
+    through the main proxy and a registered direct alias, and compared with:
 
         & '<target>' <argument text>              # what the user would get without PowerStub
         pstb <stub> <command> <argument text>     # what they get through the proxy
@@ -84,6 +84,7 @@ Describe "Parsing matrix" -Tag 'ParsingMatrix' -ForEach @{
         # Script targets
         $script:ScriptStubRoot = Join-Path $PSScriptRoot 'parsing_stub_root'
         New-PowerStub -Name 'MatrixScripts' -Path $script:ScriptStubRoot -Force
+        New-PowerStubDirectAlias -AliasName 'MatrixDirectScripts' -Stub 'MatrixScripts'
 
         # A real native executable exercises PowerShell's native argument binder. Keeping
         # the .exe suffix on Unix matches the product's intentionally narrow discovery.
@@ -127,6 +128,7 @@ int main(int argc, char **argv) {
                 throw "Could not compile the native parsing fixture: $compileOutput"
             }
             New-PowerStub -Name 'MatrixExe' -Path $script:ExeStubRoot -Force
+            New-PowerStubDirectAlias -AliasName 'MatrixDirectExe' -Stub 'MatrixExe'
         }
 
         # Quoted globs must stay literal even when matching files exist. Do not let the
@@ -181,11 +183,13 @@ $namedArr = @('-Name', 'viaarray'); $tagsArr = @('-Tags', 'a', 'b')
             if ($Command -eq 'echoargs') {
                 return [PSCustomObject]@{
                     Stub = 'MatrixExe'
+                    Alias = 'MatrixDirectExe'
                     Path = $script:ExeTarget
                 }
             }
             return [PSCustomObject]@{
                 Stub = 'MatrixScripts'
+                Alias = 'MatrixDirectScripts'
                 Path = Join-Path $script:ScriptStubRoot "Commands\$Command.ps1"
             }
         }
@@ -196,18 +200,47 @@ $namedArr = @('-Name', 'viaarray'); $tagsArr = @('-Tags', 'a', 'b')
             $target = Get-MatrixTarget $Command
             $direct = Get-MatrixOutcome -Invocation "& '$($target.Path)'" -ArgText $ArgText
             $proxied = Get-MatrixOutcome -Invocation "pstb $($target.Stub) $Command" -ArgText $ArgText
+            $directAlias = Get-MatrixOutcome -Invocation "$($target.Alias) $Command" -ArgText $ArgText
 
             # Show-ParsingMatrix.ps1 collects both outcomes here for its report.
             if ($null -ne $global:PSTBMatrixResults) {
                 $global:PSTBMatrixResults.Add([PSCustomObject]@{
                     Id = $Id; Group = $Group; Category = $Category; Command = $Command; ArgText = $ArgText
                     Match = ($proxied -ceq $direct); Direct = $direct; Proxied = $proxied
+                    AliasMatch = ($directAlias -ceq $direct); DirectAlias = $directAlias
                 })
             }
 
             $proxied | Should -BeExactly $direct -Because "arguments were: $ArgText"
+            $directAlias | Should -BeExactly $direct -Because "direct-alias arguments were: $ArgText"
         }
 
+    }
+
+    It 'Preserves native syntax with the resolved command path: <Id>' -Skip:(-not $script:NativeMatrixAvailable) -ForEach $script:KnownMatrixCases {
+        # Keep a passing escape hatch for every audited mismatch, without weakening the
+        # original proxy equality assertions or trying to re-evaluate caller source.
+        $direct = Get-MatrixOutcome -Invocation "& '$script:ExeTarget'" -ArgText $ArgText
+        $resolved = Get-MatrixOutcome -Invocation "& (Get-PowerStubCommand -Stub MatrixExe -Command echoargs).Path" -ArgText $ArgText
+        $resolved | Should -BeExactly $direct -Because "resolved-path arguments were: $ArgText"
+    }
+
+    It 'Keeps caller-local native argument mode <Mode> with the resolved command path' -Skip:(-not $script:NativeMatrixAvailable) -ForEach @(
+        @{ Mode = 'Legacy' }
+        @{ Mode = 'Standard' }
+        @{ Mode = 'Windows' }
+    ) {
+        function Get-LocalNativeOutcome {
+            param([string]$Invocation, [string]$Mode)
+            # This preference deliberately belongs to a calling function, rather than
+            # global/module scope. Native argument parsing must use that caller context.
+            $PSNativeCommandArgumentPassing = $Mode
+            Get-MatrixOutcome -Invocation $Invocation -ArgText ''''' ''"quoted"'' ''space value'' ''--'' ''-k:value'' ''a,b,c'' ''*.txt'''
+        }
+        $direct = Get-LocalNativeOutcome -Invocation "& '$script:ExeTarget'" -Mode $Mode
+        $resolved = Get-LocalNativeOutcome -Invocation "& (Get-PowerStubCommand -Stub MatrixExe -Command echoargs).Path" -Mode $Mode
+        $resolved | Should -BeExactly $direct
+        $direct | Should -Not -BeNullOrEmpty
     }
 
     AfterAll {
