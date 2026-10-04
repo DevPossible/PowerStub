@@ -393,7 +393,49 @@ Describe 'Release contracts through the installed manifest' -Tag 'ReleaseCoverag
             (pstbreleasecustom ReleaseStub ok 6>$null) | Should -Be 'release-ok'
             Import-Module $script:ReleaseManifest -Force
             (pstbreleasecustom ReleaseStub ok 6>$null) | Should -Be 'release-ok'
-            Get-Command pstb -ErrorAction SilentlyContinue | Should -BeNullOrEmpty
+            # Get-Command can autoload a different installed module advertising pstb.
+            # Inspect the existing alias provider, not command discovery, for absence.
+            Get-Item -LiteralPath Alias:pstb -ErrorAction SilentlyContinue | Should -BeNullOrEmpty
+            @((Get-Module PowerStub).ExportedAliases.Keys) | Should -Be @('pstbreleasecustom')
+        }
+
+        It 'Custom alias reload does not export the default alias when another module advertises it for autoload' {
+            $PSModuleAutoLoadingPreference = 'All'
+            $originalModulePath = $env:PSModulePath
+            $sentinelName = 'PSTBReleaseAutoloadSentinel'
+            $modules = Join-Path $script:ReleaseRoot 'autoload-modules'
+            $sentinelRoot = Join-Path $modules $sentinelName
+            [IO.Directory]::CreateDirectory($sentinelRoot) | Out-Null
+            [IO.File]::WriteAllText((Join-Path $sentinelRoot "$sentinelName.psm1"), @'
+function Invoke-PSTBReleaseAutoloadSentinel { 'unrelated-module' }
+Set-Alias -Name pstb -Value Invoke-PSTBReleaseAutoloadSentinel
+Export-ModuleMember -Function Invoke-PSTBReleaseAutoloadSentinel -Alias pstb
+'@)
+            New-ModuleManifest -Path (Join-Path $sentinelRoot "$sentinelName.psd1") -RootModule "$sentinelName.psm1" `
+                -FunctionsToExport Invoke-PSTBReleaseAutoloadSentinel -AliasesToExport pstb
+            try {
+                $env:PSModulePath = $modules + [IO.Path]::PathSeparator + (Join-Path $PSHOME 'Modules')
+                @{ InvokeAlias = 'pstbreleasecustom'; GitEnabled = $false; Stubs = @{} } |
+                    ConvertTo-Json | Set-Content -LiteralPath $script:ReleaseConfigFile
+                Import-Module $script:ReleaseManifest -Force
+                Import-Module $script:ReleaseManifest -Force
+                Get-Module $sentinelName | Should -BeNullOrEmpty
+                Get-Item -LiteralPath Alias:pstb -ErrorAction SilentlyContinue | Should -BeNullOrEmpty
+                (Get-Item -LiteralPath Alias:pstbreleasecustom).Definition | Should -Be 'Invoke-PowerStubCommand'
+                @((Get-Module PowerStub).ExportedAliases.Keys) | Should -Be @('pstbreleasecustom')
+
+                # Prove why an unrestricted Get-Command is not an absence assertion:
+                # discovery is allowed to import another available module for that name.
+                $discovered = Get-Command pstb -ErrorAction Stop
+                $discovered.ModuleName | Should -Be $sentinelName
+                $discovered.Definition | Should -Be 'Invoke-PSTBReleaseAutoloadSentinel'
+                @((Get-Module PowerStub).ExportedAliases.Keys) | Should -Be @('pstbreleasecustom')
+                (Get-Item -LiteralPath Alias:pstbreleasecustom).Definition | Should -Be 'Invoke-PowerStubCommand'
+            }
+            finally {
+                Remove-Module $sentinelName -Force -ErrorAction SilentlyContinue
+                $env:PSModulePath = $originalModulePath
+            }
         }
 
         It 'A registered folder containing literal brackets must remain invocable' {

@@ -74,12 +74,22 @@ Remove-Module PowerStub
         $script:PackageReadme | Should -Match 'pstb update --check'
     }
 }
-Describe 'Release pipeline safety contracts' -Tag 'Packaging' {
+Describe 'Release pipeline safety contracts with <LineEndingName> line endings' -Tag 'Packaging' -ForEach @(
+    @{ LineEndingName = 'LF'; LineEnding = "`n" },
+    @{ LineEndingName = 'CRLF'; LineEnding = "`r`n" }
+) {
+    BeforeAll {
+        # Exercise both checkout formats on every platform, including Unix CI.
+        $ci = $script:PackageCi -replace '\r?\n', $LineEnding
+    }
     It 'retains six main-release jobs, allows branch/MR tests, and rejects tag pipelines' {
         foreach ($job in @('validate_github','test','version','mirror','publish','github_release')) {
-            $script:PackageCi | Should -Match "(?m)^${job}:"
+            $ci | Should -Match "(?m)^${job}:"
         }
-        $workflow = [regex]::Match($script:PackageCi, '(?s)workflow:\s*\n(.*?)\nstages:').Groups[1].Value
+        $workflowMatch = [regex]::Match($ci, '(?ms)^workflow:[ \t]*\r?\n(.*?)^stages:')
+        $workflowMatch.Success | Should -BeTrue
+        $workflow = $workflowMatch.Groups[1].Value
+        $workflow | Should -Not -BeNullOrEmpty
         $workflow | Should -Match '(?s)\$CI_COMMIT_TAG''\s+when: never'
         $workflow | Should -Match '\$CI_PIPELINE_SOURCE == "merge_request_event"'
         $workflow | Should -Match '\$CI_COMMIT_BRANCH && \(\$CI_PIPELINE_SOURCE == "push" \|\| \$CI_PIPELINE_SOURCE == "web"\)'
@@ -87,26 +97,37 @@ Describe 'Release pipeline safety contracts' -Tag 'Packaging' {
         $workflow | Should -Match 'when: never\s*$'
     }
     It 'requires main push/web for every credential-dependent or release job' {
-        $rules = [regex]::Match($script:PackageCi, '(?s)rules: &release_rules\s*\n(.*?)\n  stage:').Groups[1].Value
+        $rulesMatch = [regex]::Match($ci, '(?ms)^  rules: &release_rules[ \t]*\r?\n(.*?)^  stage:')
+        $rulesMatch.Success | Should -BeTrue
+        $rules = $rulesMatch.Groups[1].Value
+        $rules | Should -Not -BeNullOrEmpty
         $rules | Should -Match '\$CI_COMMIT_BRANCH == "main" && \(\$CI_PIPELINE_SOURCE == "push" \|\| \$CI_PIPELINE_SOURCE == "web"\)'
         $rules | Should -Match 'when: never\s*$'
         foreach ($job in @('version','mirror','publish','github_release')) {
-            $script:PackageCi | Should -Match "(?m)^${job}:\r?\n  rules: \*release_rules"
+            $ci | Should -Match "(?m)^${job}:\r?\n  rules: \*release_rules"
         }
-        $testJob = [regex]::Match($script:PackageCi, '(?s)\ntest:\n(.*?)\nversion:').Groups[1].Value
+    }
+    It 'keeps branch/MR tests independent of release credentials and rules' {
+        $testMatch = [regex]::Match($ci, '(?ms)^test:[ \t]*\r?\n(.*?)^version:')
+        $testMatch.Success | Should -BeTrue
+        $testJob = $testMatch.Groups[1].Value
+        $testJob | Should -Not -BeNullOrEmpty
         $testJob | Should -Not -Match 'GITHUB_PAT|GITLAB_PUSH_TOKEN|PSGALLERY_API_KEY|release_rules'
     }
     It 'requires successful mirror before Gallery publication and package verification before upload' {
-        $publish = [regex]::Match($script:PackageCi, '(?s)\npublish:\n(.*?)\ngithub_release:').Groups[1].Value
+        $publishMatch = [regex]::Match($ci, '(?ms)^publish:[ \t]*\r?\n(.*?)^github_release:')
+        $publishMatch.Success | Should -BeTrue
+        $publish = $publishMatch.Groups[1].Value
+        $publish | Should -Not -BeNullOrEmpty
         $publish | Should -Match '(?s)needs:.*?- job: mirror\s+artifacts: false'
         $publish | Should -Match '(?s)stage-module.ps1.*?test-staged-module.ps1.*?if \(\$LASTEXITCODE -ne 0\).*?Publish-Module'
         $publish | Should -Not -Match 'Update-ModuleManifest -Path "\$env:MODULE_PATH'
     }
     It 'uses JUnit XML with GitLab and delegates API validation to the tested release script' {
-        $script:PackageCi | Should -Match 'OutputFormat = "JUnitXml"'
-        $script:PackageCi | Should -Not -Match 'OutputFormat = "NUnitXml"'
-        $script:PackageCi | Should -Match 'junit: TestResults/testResults.xml'
-        $script:PackageCi | Should -Match 'sh scripts/create-github-release.sh'
+        $ci | Should -Match 'OutputFormat = "JUnitXml"'
+        $ci | Should -Not -Match 'OutputFormat = "NUnitXml"'
+        $ci | Should -Match 'junit: TestResults/testResults.xml'
+        $ci | Should -Match 'sh scripts/create-github-release.sh'
     }
 }
 Describe 'GitHub release API response handling' -Tag 'Packaging' -Skip:($IsWindows -or -not (Get-Command sh -ErrorAction SilentlyContinue)) {
