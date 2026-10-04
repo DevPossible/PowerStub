@@ -67,7 +67,7 @@ function Get-PowerStubCommandHelp {
     }
     else {
         # For .ps1 files, get help directly
-        $help = Get-Help ([System.Management.Automation.WildcardPattern]::Escape($cmd.Path)) -Full -ErrorAction SilentlyContinue
+        $help = Get-Help (Get-PowerStubFilePattern -Path $cmd.Path) -Full -ErrorAction SilentlyContinue
     }
 
     if (-not $help -or $help.Synopsis -eq $cmd.Path) {

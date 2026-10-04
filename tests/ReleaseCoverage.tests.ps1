@@ -438,6 +438,7 @@ param([switch]$Flag)
 param([string]$Flag)
 "lookalike:$Flag"
 '@)
+            [IO.File]::WriteAllText((Join-Path $literal 'Commands/probe.ps1-extra.ps1'), "'prefix-lookalike'")
             New-PowerStubDirectAlias -AliasName pstbreleasealias -Stub Literal | Out-Null
             $beforeLocation = (Get-Location).Path
             (Get-PowerStubCommand Literal probe).Path | Should -BeExactly (Join-Path $literal 'Commands/probe.ps1')
@@ -451,12 +452,20 @@ param([string]$Flag)
             $literal = New-ReleaseStub -Name Literal -Folder 'tools[q]'
             $lookalike = New-ReleaseStub -Name Lookalike -Folder 'toolsq'
             $target = Join-Path $literal 'Commands/probe[q].ps1'
-            [IO.File]::WriteAllText($target, 'param([switch]$Flag); "literal-name:$Flag"')
+            [IO.File]::WriteAllText($target, @'
+<#
+.SYNOPSIS
+    literal-filename-help
+#>
+param([switch]$Flag)
+"literal-name:$Flag"
+'@)
             [IO.File]::WriteAllText((Join-Path $literal 'Commands/probeq.ps1'), "'filename-lookalike'")
             [IO.File]::WriteAllText((Join-Path $lookalike 'Commands/probeq.ps1'), "'directory-lookalike'")
             [IO.File]::WriteAllText((Join-Path $literal 'Commands/probe[q].ps1.bak'), "'prefix-lookalike'")
             (Get-PowerStubCommand Literal 'probe[q]').Path | Should -BeExactly $target
             (pstb Literal 'probe[q]' -Flag:$false 6>$null) | Should -BeExactly 'literal-name:False'
+            (Get-PowerStubCommandHelp Literal 'probe[q]').Synopsis | Should -Match 'literal-filename-help'
 
             $nativeSource = if ($IsWindows) { $env:ComSpec } else { (Get-Command sh -CommandType Application).Source }
             foreach ($path in @((Join-Path $literal 'Commands/native[q].exe'), (Join-Path $literal 'Commands/nativeq.exe'), (Join-Path $lookalike 'Commands/nativeq.exe'))) {
