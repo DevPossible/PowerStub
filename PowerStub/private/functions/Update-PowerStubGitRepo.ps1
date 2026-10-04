@@ -58,17 +58,33 @@ function Update-PowerStubGitRepo {
         }
     }
 
+    if ($gitInfo.Status -eq 'NoUpstream') {
+        return [PSCustomObject]@{
+            Success = $false
+            Message = $gitInfo.StatusMessage
+            Path    = $gitInfo.RepoRoot
+        }
+    }
+
     # Perform git pull using -C to avoid changing directory
     # The output is captured, so a terminal credential prompt would be invisible and hang:
-    # make git fail with a clear error instead. Credential manager dialogs still work.
+    # make git fail with a clear error instead of allowing credential manager dialogs.
+    $PSNativeCommandUseErrorActionPreference = $false
     $savedTerminalPrompt = $env:GIT_TERMINAL_PROMPT
+    $savedGcmInteractive = $env:GCM_INTERACTIVE
     $env:GIT_TERMINAL_PROMPT = '0'
+    $env:GCM_INTERACTIVE = 'never'
+    $pullSuccess = $false
     try {
         $pullOutput = git -C $gitInfo.RepoRoot pull 2>&1
         $pullSuccess = $LASTEXITCODE -eq 0
     }
+    catch {
+        $pullOutput = $_.Exception.Message
+    }
     finally {
         $env:GIT_TERMINAL_PROMPT = $savedTerminalPrompt
+        $env:GCM_INTERACTIVE = $savedGcmInteractive
     }
 
     return [PSCustomObject]@{
