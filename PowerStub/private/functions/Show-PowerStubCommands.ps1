@@ -95,7 +95,7 @@ function Show-PowerStubCommands {
         }
 
         $displayList += [PSCustomObject]@{
-            ' '      = $prefix
+            Prefix   = $prefix
             Command  = $displayName
             Synopsis = $synopsis
         }
@@ -118,6 +118,11 @@ function Show-PowerStubCommands {
     }
 
     Write-Host ""
-    $displayList | Format-Table -AutoSize | Out-String | ForEach-Object { $_.Trim() } | Write-Host
+    $displayList | Format-Table -Property @{
+        Label = 'Command'
+        Expression = {
+            if ($_.Prefix) { "$($_.Command) $($_.Prefix)" } else { $_.Command }
+        }
+    }, Synopsis -AutoSize | Out-String | ForEach-Object { $_.Trim() } | Write-Host
     Write-Host ""
 }

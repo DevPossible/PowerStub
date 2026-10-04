@@ -786,11 +786,24 @@ throw 'Listing must not execute commands'
             @($output | Where-Object { $_ -is [System.IO.FileInfo] }).Count | Should -Be 0
             $text = $output | Out-String
             $text | Should -Match 'Command\s+Synopsis'
+            $text | Should -Match '(?m)^Command +Synopsis\r?\n------- +--------\r?$'
             $text | Should -Match 'aardvark\s+Back up the database\.'
             $text | Should -Match 'zulu\s+Deploy the application\.'
             $text | Should -Match 'missing-help\s+-'
             $text.IndexOf('aardvark') | Should -BeLessThan $text.IndexOf('missing-help')
             $text.IndexOf('missing-help') | Should -BeLessThan $text.IndexOf('zulu')
+        }
+
+        It "Should keep prerelease markers in the command column without changing name order" {
+            Enable-PowerStubAlphaCommands
+            Enable-PowerStubBetaCommands
+
+            $text = ts 6>&1 | Out-String
+            $text | Should -Match '(?m)^Command +Synopsis\r?\n------- +--------\r?$'
+            $text | Should -Match '(?m)^deploy \* +'
+            $text | Should -Match '(?m)^new-feature \* +'
+            $text.IndexOf('deploy *') | Should -BeLessThan $text.IndexOf('new-feature *')
+            $text | Should -Not -Match '(?m)^- -------'
         }
 
         It "Should show an empty-stub message via the alias" {
