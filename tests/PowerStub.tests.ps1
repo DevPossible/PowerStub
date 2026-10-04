@@ -750,8 +750,53 @@ Describe "New-PowerStubDirectAlias" {
         }
 
         It "Should list commands when run without arguments" {
-            $output = ts
+            $output = @(ts 6>&1)
             $output | Should -Not -BeNullOrEmpty
+            @($output | Where-Object { $_ -is [System.IO.FileInfo] }).Count | Should -Be 0
+            ($output | Out-String) | Should -Match 'Command\s+Synopsis'
+        }
+
+        It "Should show sorted command names and header summaries via <EntryPoint>" -ForEach @(
+            @{ EntryPoint = 'alias' }
+            @{ EntryPoint = 'pstb' }
+        ) {
+            $stubRoot = Join-Path $TestDrive 'ListingStub'
+            $commandsPath = Join-Path $stubRoot 'Commands'
+            New-Item -ItemType Directory -Path $commandsPath -Force | Out-Null
+            @'
+<#
+.SYNOPSIS
+    Deploy the application.
+#>
+throw 'Listing must not execute commands'
+'@ | Set-Content (Join-Path $commandsPath 'zulu.ps1')
+            @'
+<#
+.SYNOPSIS
+    Back up the database.
+#>
+throw 'Listing must not execute commands'
+'@ | Set-Content (Join-Path $commandsPath 'aardvark.ps1')
+            Set-Content (Join-Path $commandsPath 'missing-help.ps1') "param([string]`$Environment)`nthrow 'Listing must not execute commands'"
+            New-PowerStub -Name 'ListingStub' -Path $stubRoot -Force
+            New-PowerStubDirectAlias -AliasName ts -Stub 'ListingStub' -Force | Out-Null
+
+            $output = if ($EntryPoint -eq 'alias') { @(ts 6>&1) } else { @(pstb ListingStub 6>&1) }
+            @($output | Where-Object { $_ -is [System.IO.FileInfo] }).Count | Should -Be 0
+            $text = $output | Out-String
+            $text | Should -Match 'Command\s+Synopsis'
+            $text | Should -Match 'aardvark\s+Back up the database\.'
+            $text | Should -Match 'zulu\s+Deploy the application\.'
+            $text | Should -Match 'missing-help\s+-'
+            $text.IndexOf('aardvark') | Should -BeLessThan $text.IndexOf('missing-help')
+            $text.IndexOf('missing-help') | Should -BeLessThan $text.IndexOf('zulu')
+        }
+
+        It "Should show an empty-stub message via the alias" {
+            New-PowerStub -Name 'EmptyListingStub' -Path (Join-Path $TestDrive 'EmptyListingStub') -Force
+            New-PowerStubDirectAlias -AliasName ts -Stub 'EmptyListingStub' -Force | Out-Null
+
+            (ts 6>&1 | Out-String) | Should -Match "No commands found in stub 'EmptyListingStub'\."
         }
 
         It "Should execute commands with parameters" {

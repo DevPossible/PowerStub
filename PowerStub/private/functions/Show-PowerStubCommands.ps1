@@ -70,8 +70,11 @@ function Show-PowerStubCommands {
             else {
                 # For .ps1 files, get help directly
                 $help = Get-Help $cmd.FullName -ErrorAction SilentlyContinue
-                if ($help -and $help.Synopsis -and $help.Synopsis -ne $cmd.FullName) {
+                if ($help -and $help -isnot [string] -and $help.Synopsis) {
                     $synopsis = $help.Synopsis.Trim()
+                    if ($synopsis -eq $cmd.FullName -or $synopsis -eq $cmd.Name) {
+                        $synopsis = $null
+                    }
                 }
             }
 

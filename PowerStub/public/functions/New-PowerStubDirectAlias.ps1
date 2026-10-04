@@ -74,12 +74,6 @@ function New-PowerStubDirectAlias {
     # A simple function with no parameters, for the same reason as Invoke-PowerStubCommand:
     # nothing meant for the target may be bound here. @args forwards every argument untouched.
     $functionBody = @"
-    if (`$args.Count -eq 0) {
-        # List commands
-        & (Get-Module PowerStub) { param(`$s) Find-PowerStubCommands `$s } '$escapedStub'
-        return
-    }
-
     Invoke-PowerStubCommand '$escapedStub' @args
 "@
 

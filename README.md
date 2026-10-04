@@ -202,7 +202,10 @@ pstb DevOps deploy-app -Environment prod -Version 2.0.1
 |---------|-------|-------------|
 | `Invoke-PowerStubCommand -Stub <name> -Command <cmd>` | `pstb` | Execute a command from a stub |
 | `pstb` (no args) | | Show overview with stubs and built-in commands |
-| `pstb <stub>` (no command) | | List commands in the stub |
+| `pstb <stub>` (no command) | | Show commands sorted by name with summaries from their `.SYNOPSIS` headers |
+
+Direct aliases without arguments show the same command table. Commands without help
+headers show `-` for their synopsis; executables use their metadata file's synopsis.
 
 ### Built-in Commands
 
