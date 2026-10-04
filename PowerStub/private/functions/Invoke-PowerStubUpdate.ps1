@@ -24,7 +24,7 @@ function Invoke-PowerStubUpdate {
     )
 
     if (-not $Script:GitEnabled) {
-        throw "Git integration is disabled. Enable it with: Set-PowerStubConfigurationKey 'GitEnabled' `$true"
+        throw "Git integration is disabled. Set GitEnabled to true in the file returned by Get-PowerStubConfiguration -Key ConfigFile, then reload PowerStub."
     }
     if (-not $Script:GitAvailable) {
         throw "Git is not available on this system."
@@ -48,6 +48,24 @@ function Invoke-PowerStubUpdate {
 
     $stubs = Get-PowerStubConfigurationKey 'Stubs'
     $processedRepos = @{}
+    $showStatus = {
+        param($StubName, $GitInfo)
+        if ($GitInfo.Status -ne 'Ready') {
+            Write-Host "Stub '$StubName': $($GitInfo.StatusMessage)." -ForegroundColor Yellow
+        }
+        elseif ($GitInfo.BehindCount -gt 0 -and $GitInfo.AheadCount -gt 0) {
+            Write-Host "Stub '$StubName' has diverged: $($GitInfo.BehindCount) commit(s) behind and $($GitInfo.AheadCount) commit(s) ahead." -ForegroundColor Yellow
+        }
+        elseif ($GitInfo.BehindCount -gt 0) {
+            Write-Host "Stub '$StubName' is $($GitInfo.BehindCount) commit(s) behind." -ForegroundColor Yellow
+        }
+        elseif ($GitInfo.AheadCount -gt 0) {
+            Write-Host "Stub '$StubName' is $($GitInfo.AheadCount) commit(s) ahead." -ForegroundColor Cyan
+        }
+        else {
+            Write-Host "Stub '$StubName' is up to date." -ForegroundColor Green
+        }
+    }
 
     if ($targetStub) {
         # Process specific stub
@@ -62,15 +80,7 @@ function Invoke-PowerStubUpdate {
         }
 
         if ($checkOnly) {
-            if ($gitInfo.BehindCount -gt 0) {
-                Write-Host "Stub '$targetStub' is $($gitInfo.BehindCount) commit(s) behind." -ForegroundColor Yellow
-            }
-            elseif ($gitInfo.AheadCount -gt 0) {
-                Write-Host "Stub '$targetStub' is $($gitInfo.AheadCount) commit(s) ahead." -ForegroundColor Cyan
-            }
-            else {
-                Write-Host "Stub '$targetStub' is up to date." -ForegroundColor Green
-            }
+            & $showStatus $targetStub $gitInfo
         }
         else {
             Write-Host "Updating stub '$targetStub'..." -ForegroundColor Cyan
@@ -86,30 +96,34 @@ function Invoke-PowerStubUpdate {
     else {
         # Process all stubs
         $behindCount = 0
+        $aheadCount = 0
+        $uncheckedCount = 0
+        $updatedCount = 0
+        $failedCount = 0
         foreach ($stubName in $stubs.Keys) {
             $stubConfig = $stubs[$stubName]
             $stubPath = Get-PowerStubPath -StubConfig $stubConfig
             $gitInfo = Get-PowerStubGitInfo -Path $stubPath -Fetch:$checkOnly
             if ($gitInfo.IsRepo -and $gitInfo.RepoRoot -and -not $processedRepos.ContainsKey($gitInfo.RepoRoot)) {
                 if ($checkOnly) {
-                    if ($gitInfo.BehindCount -gt 0) {
-                        Write-Host "Stub '$stubName' is $($gitInfo.BehindCount) commit(s) behind." -ForegroundColor Yellow
-                        $behindCount++
-                    }
-                    elseif ($gitInfo.AheadCount -gt 0) {
-                        Write-Host "Stub '$stubName' is $($gitInfo.AheadCount) commit(s) ahead." -ForegroundColor Cyan
+                    & $showStatus $stubName $gitInfo
+                    if ($gitInfo.Status -ne 'Ready') {
+                        $uncheckedCount++
                     }
                     else {
-                        Write-Host "Stub '$stubName' is up to date." -ForegroundColor Green
+                        if ($gitInfo.BehindCount -gt 0) { $behindCount++ }
+                        if ($gitInfo.AheadCount -gt 0) { $aheadCount++ }
                     }
                 }
                 else {
                     Write-Host "Updating stub '$stubName' ($($gitInfo.RepoRoot))..." -ForegroundColor Cyan
                     $result = Update-PowerStubGitRepo -Path $stubPath
                     if ($result.Success) {
+                        $updatedCount++
                         Write-Host "  $($result.Message)" -ForegroundColor Green
                     }
                     else {
+                        $failedCount++
                         Write-Host "  $($result.Message)" -ForegroundColor Red
                     }
                 }
@@ -123,12 +137,21 @@ function Invoke-PowerStubUpdate {
             if ($behindCount -gt 0) {
                 Write-Host "`n$behindCount stub(s) have updates available. Run 'pstb update' to pull changes." -ForegroundColor Yellow
             }
-            else {
+            if ($aheadCount -gt 0) {
+                Write-Host "`n$aheadCount repository(ies) have local commits ahead of their tracking branch." -ForegroundColor Cyan
+            }
+            if ($uncheckedCount -gt 0) {
+                Write-Host "`n$uncheckedCount repository(ies) could not be checked." -ForegroundColor Yellow
+            }
+            if ($behindCount -eq 0 -and $aheadCount -eq 0 -and $uncheckedCount -eq 0) {
                 Write-Host "`nAll $($processedRepos.Count) stub(s) are up to date." -ForegroundColor Green
             }
         }
         else {
-            Write-Host "`nUpdated $($processedRepos.Count) repository(ies)." -ForegroundColor Cyan
+            Write-Host "`nUpdated $updatedCount repository(ies)." -ForegroundColor Cyan
+            if ($failedCount -gt 0) {
+                Write-Host "$failedCount repository(ies) failed to update." -ForegroundColor Red
+            }
         }
     }
 }

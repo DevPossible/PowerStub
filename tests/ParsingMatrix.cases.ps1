@@ -6,8 +6,8 @@
     Each line is:   Category ::: argument text
 
     The argument text is PowerShell source, exactly as a user would type it after the
-    command name. The matrix runs it twice from the same text - once calling the target
-    directly and once through pstb - and requires identical results.
+    command name. The matrix runs it from the same text through the target directly,
+    through pstb and through a registered direct alias, and requires identical results.
 
     The lists are literal here-strings so nothing needs escaping. The variables used in the
     argument text ($str, $arr, @splatHash, ...) are defined by the test's prelude.

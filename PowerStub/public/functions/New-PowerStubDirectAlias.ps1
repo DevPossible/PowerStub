@@ -15,7 +15,8 @@
     The name of the stub to create an alias for.
 
 .PARAMETER Force
-    Overwrites the alias if it already exists.
+    Retained for command-line compatibility. Existing commands or saved aliases are
+    always rejected, including when -Force is specified.
 
 .EXAMPLE
     New-PowerStubDirectAlias -AliasName dv -Stub DevOps
@@ -26,9 +27,9 @@
         pstb DevOps deploy -Environment prod
 
 .EXAMPLE
-    New-PowerStubDirectAlias -AliasName dv -Stub DevOps -Force
+    New-PowerStubDirectAlias -AliasName dv2 -Stub DevOps
 
-    Overwrites an existing 'dv' alias.
+    Creates a second shortcut with a distinct, unused name.
 
 .OUTPUTS
     PSCustomObject with alias information and usage instructions.
@@ -60,59 +61,31 @@ function New-PowerStubDirectAlias {
         throw "Stub '$Stub' not found. Register it first with New-PowerStub."
     }
 
-    # Check if function already exists
-    $wasOurAlias = $Script:RegisteredDirectAliases -contains $AliasName
-    $existingCmd = Get-Command $AliasName -ErrorAction SilentlyContinue
-    if ($existingCmd -and -not $Force) {
-        throw "A command named '$AliasName' already exists. Use -Force to overwrite."
-    }
-
-    # Create the function in global scope using ScriptBlock instead of Invoke-Expression
-    # Escape single quotes in stub name to prevent code injection
-    $escapedStub = $Stub -replace "'", "''"
-
-    # A simple function with no parameters, for the same reason as Invoke-PowerStubCommand:
-    # nothing meant for the target may be bound here. @args forwards every argument untouched.
-    $functionBody = @"
-    Invoke-PowerStubCommand '$escapedStub' @args
-"@
-
-    # Create the function via ScriptBlock instead of Invoke-Expression
-    $scriptBlock = [scriptblock]::Create($functionBody)
-    Set-Item -Path "function:global:$AliasName" -Value $scriptBlock
-
-    # Remember which global functions are ours so module removal only cleans up those
-    if ($Script:RegisteredDirectAliases -notcontains $AliasName) {
-        $Script:RegisteredDirectAliases += $AliasName
-    }
-
-    # Tab completion for the alias comes from the module's TabExpansion2 wrapper,
-    # which recognizes every name in $Script:RegisteredDirectAliases.
-
-    # Store in config for re-registration on module load.
-    # If -Force was used to take a name that belongs to another command (for example a
-    # 'devops.bat' on the PATH), remember that consent: module load re-creates such an alias,
-    # but never lets a name that merely appears in the config file shadow a command.
-    $shadowsOtherCommand = $Force -and $existingCmd -and -not $wasOurAlias
+    # Public add never refreshes, retargets, or replaces a duplicate, including our
+    # own persisted proxy. Startup uses the private session-only registration path.
     $directAliases = Get-PowerStubConfigurationKey 'DirectAliases'
-    $forcedAliases = @(Get-PowerStubConfigurationKey 'ForcedDirectAliases')
-    $needsSave = -not $directAliases -or $directAliases[$AliasName] -ne $Stub -or
-        ($shadowsOtherCommand -and $forcedAliases -notcontains $AliasName)
-    if ($needsSave) {
-        # Add only this alias so other sessions' aliases are kept
+    if (($directAliases -and $directAliases.ContainsKey($AliasName)) -or
+        (Get-PowerStubAliasConflict $AliasName)) {
+        throw "A command or saved direct alias named '$AliasName' already exists. Choose a different alias name."
+    }
+
+    Register-PowerStubDirectAlias -AliasName $AliasName -Stub $Stub
+    try {
+        # Recheck under the lock: another session may have added this name after Sync.
         Update-PowerStubConfiguration {
             if (-not $Script:PSTBSettings['DirectAliases']) {
                 $Script:PSTBSettings['DirectAliases'] = @{}
             }
-            $Script:PSTBSettings['DirectAliases'][$AliasName] = $Stub
-
-            if ($shadowsOtherCommand) {
-                $forced = @($Script:PSTBSettings['ForcedDirectAliases']) | Where-Object { $_ }
-                if ($forced -notcontains $AliasName) {
-                    $Script:PSTBSettings['ForcedDirectAliases'] = @($forced) + $AliasName
-                }
+            if ($Script:PSTBSettings['DirectAliases'].ContainsKey($AliasName)) {
+                throw "A saved direct alias named '$AliasName' already exists. Choose a different alias name."
             }
+            $Script:PSTBSettings['DirectAliases'][$AliasName] = $Stub
         }
+    }
+    catch {
+        # A failed add must not leave an unsaved global function behind.
+        Unregister-PowerStubDirectAliasFunction $AliasName
+        throw
     }
 
     # Return info object

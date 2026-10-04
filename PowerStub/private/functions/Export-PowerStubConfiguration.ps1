@@ -20,7 +20,7 @@ function Export-PowerStubConfiguration {
 
     # Ensure config directory exists
     $configDir = Split-Path $fileName -Parent
-    if (-not (Test-Path $configDir)) {
+    if (-not (Test-Path -LiteralPath $configDir)) {
         New-Item -ItemType Directory -Path $configDir -Force | Out-Null
     }
 

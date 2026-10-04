@@ -12,6 +12,10 @@
 .PARAMETER Tag
     Run only tests with these tags.
 
+.PARAMETER IncludeKnownIssues
+    Include explicitly tagged known defects (expected to fail).
+    Selecting -Tag KnownIssue also runs those cases.
+
 .PARAMETER Output
     Pester output verbosity: None, Normal, Detailed, Diagnostic. Default: Detailed.
 
@@ -23,15 +27,23 @@
 
 .EXAMPLE
     .\dev-test.ps1
-    # Runs all tests with detailed output
+    # Runs the release gate, including all passing parsing matrix cases
 
 .EXAMPLE
     .\dev-test.ps1 -Filter "*Alpha*"
     # Runs only tests with "Alpha" in the name
 
 .EXAMPLE
+    .\dev-test.ps1 -Tag ParsingMatrix
+    # Runs 305 Linux / 307 expected Windows passing matrix/workaround/guard tests
+
+.EXAMPLE
+    .\dev-test.ps1 -Tag ParsingMatrix -IncludeKnownIssues
+    # Runs all 322 matrix, workaround and guard tests, including known mismatches
+
+.EXAMPLE
     .\dev-test.ps1 -Tag KnownIssue
-    # Runs the tests for known, unfixed bugs (expected to fail; excluded by default)
+    # Runs only explicitly tagged known defects (expected to fail)
 
 .EXAMPLE
     .\dev-test.ps1 -Output Normal
@@ -44,6 +56,7 @@
 param(
     [string]$Filter,
     [string[]]$Tag,
+    [switch]$IncludeKnownIssues,
     [ValidateSet('None', 'Normal', 'Detailed', 'Diagnostic')]
     [string]$Output = 'Detailed',
     [switch]$PassThru,
@@ -83,10 +96,10 @@ if ($Filter) {
 if ($Tag) {
     $config.Filter.Tag = $Tag
 }
-else {
-    # tests/KnownIssues.tests.ps1 and tests/ParsingMatrix.tests.ps1 document unfixed bugs and
-    # are expected to fail. Run them explicitly with: .\dev-test.ps1 -Tag KnownIssue (or ParsingMatrix)
-    $config.Filter.ExcludeTag = 'KnownIssue', 'ParsingMatrix'
+
+if (-not $IncludeKnownIssues -and 'KnownIssue' -notin $Tag) {
+    # Gate all other tests; opt out only explicitly tagged known defects.
+    $config.Filter.ExcludeTag = 'KnownIssue'
 }
 
 # Always enable PassThru so $result is populated for exit code checking
@@ -108,6 +121,6 @@ if ($PassThru) {
 }
 
 # Exit with appropriate code for CI
-if ($result.FailedCount -gt 0) {
+if ($result.Result -eq 'Failed') {
     exit 1
 }

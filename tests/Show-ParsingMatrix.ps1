@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Runs the parsing matrix and summarizes where pstb and a direct call disagree.
+    Runs the parsing matrix and summarizes where pstb or a direct alias differs from a direct call.
 
 .DESCRIPTION
     Runs tests/ParsingMatrix.tests.ps1 quietly, then prints the agreement rate per group and
@@ -13,7 +13,8 @@
     Print the tables but not the per-call details.
 
 .PARAMETER PassThru
-    Return the result objects (Id, Group, Category, Command, ArgText, Match, Direct, Proxied)
+    Return the result objects (Id, Group, Category, Command, ArgText, Match, Direct, Proxied,
+    AliasMatch, DirectAlias)
     instead of printing the report.
 
 .EXAMPLE
@@ -59,6 +60,8 @@ $results | Group-Object Group | ForEach-Object {
         Calls    = $_.Count
         Agree    = @($_.Group | Where-Object Match).Count
         Disagree = @($_.Group | Where-Object { -not $_.Match }).Count
+        AliasAgree = @($_.Group | Where-Object AliasMatch).Count
+        AliasDisagree = @($_.Group | Where-Object { -not $_.AliasMatch }).Count
     }
 } | Format-Table -AutoSize
 
@@ -68,13 +71,15 @@ $results | Group-Object Group, Category | ForEach-Object {
         Category = $_.Group[0].Category
         Calls    = $_.Count
         Disagree = @($_.Group | Where-Object { -not $_.Match }).Count
+        AliasDisagree = @($_.Group | Where-Object { -not $_.AliasMatch }).Count
     }
-} | Where-Object Disagree -gt 0 | Sort-Object Group, @{ Expression = 'Disagree'; Descending = $true } | Format-Table -AutoSize
+} | Where-Object { $_.Disagree -gt 0 -or $_.AliasDisagree -gt 0 } | Sort-Object Group, @{ Expression = 'Disagree'; Descending = $true } | Format-Table -AutoSize
 
 if (-not $SummaryOnly) {
-    foreach ($result in ($results | Where-Object { -not $_.Match })) {
+    foreach ($result in ($results | Where-Object { -not $_.Match -or -not $_.AliasMatch })) {
         "{0} [{1}/{2}] {3} {4}" -f $result.Id, $result.Group, $result.Category, $result.Command, $result.ArgText
         "    direct : $($result.Direct)"
         "    proxied: $($result.Proxied)"
+        "    alias  : $($result.DirectAlias)"
     }
 }

@@ -26,5 +26,16 @@ function Test-PowerStubReservedName {
     )
 
     $reservedNames = @('cd', 'ls', 'dir', 'where', 'git', 'python', 'node', 'npm', 'set', 'del', 'rm', 'cp', 'mv', 'cat', 'echo', 'type', 'cls', 'clear', 'exit', 'push', 'pop')
-    return $reservedNames -contains $Name.ToLower()
+    # Include contextual keywords and future-reserved words, which Get-Command does
+    # not report as commands. Keep older PowerShell hosts from persisting aliases that
+    # become parser keywords after an upgrade (for example clean, added in 7.3).
+    $keywords = @(
+        'begin', 'break', 'catch', 'class', 'clean', 'continue', 'data', 'define', 'do',
+        'dynamicparam', 'else', 'elseif', 'end', 'enum', 'exit', 'filter', 'finally',
+        'for', 'foreach', 'from', 'function', 'hidden', 'if', 'in', 'param', 'process',
+        'return', 'static', 'switch', 'throw', 'trap', 'try', 'until', 'using', 'var',
+        'while', 'inlinescript', 'parallel', 'sequence', 'workflow', 'configuration',
+        'default', 'base'
+    )
+    return $reservedNames -contains $Name -or $keywords -contains $Name
 }

@@ -10,15 +10,15 @@ if ($MyInvocation.line -match '-verbose') {
 #Get all files with functions in them
 Write-Verbose 'Finding functions'
 
-$privateFn = Get-ChildItem -Path $PSScriptRoot\private\functions\*.ps1;
-$publicFn = Get-ChildItem -Path $PSScriptRoot\public\functions\*.ps1;
+$privateFn = Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'private/functions') -Filter '*.ps1';
+$publicFn = Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'public/functions') -Filter '*.ps1';
 
 #If we are in PowerShell core, load any core specific functions
 if ($IsCoreCLR) {
     $pscorePath = Join-Path $PSScriptRoot 'public\functions-pscore'
-    if (Test-Path $pscorePath) {
+    if (Test-Path -LiteralPath $pscorePath) {
         Write-Verbose 'PowerShell 7 specific commands enabled'
-        $publicFn += Get-ChildItem -Path "$pscorePath\*.ps1"
+        $publicFn += Get-ChildItem -LiteralPath $pscorePath -Filter '*.ps1'
     }
 }
 
@@ -53,16 +53,28 @@ Write-Verbose "Git enabled: $Script:GitEnabled"
 Write-Verbose "Exporting $($exports.Count) functions"
 Export-ModuleMember -Function $exports
 
-# setup and export the main alias
-$alias = Get-PowerStubConfigurationKey 'InvokeAlias'
-# Validate alias name to prevent shadowing critical system commands
-if ($alias -notmatch '^[a-zA-Z][a-zA-Z0-9_\-]{0,20}$' -or (Test-PowerStubReservedName $alias)) {
-    Write-Warning "PowerStub: Invalid or reserved InvokeAlias '$alias'. Falling back to 'pstb'."
+# Setup the main alias only in a free namespace. Config files, including legacy
+# settings, are never permission to replace a user's command during module import.
+$requestedAlias = Get-PowerStubConfigurationKey 'InvokeAlias'
+$alias = $requestedAlias
+if ($alias -notmatch '^[a-zA-Z][a-zA-Z0-9_\-]{0,20}$' -or
+    (Test-PowerStubReservedName $alias)) {
+    Write-Warning "PowerStub: Invalid or reserved InvokeAlias '$requestedAlias'. Trying the default 'pstb'."
     $alias = 'pstb'
 }
-Write-Verbose "Creating Invoke-PowerStubCommand alias as: $alias"
-New-Alias $alias Invoke-PowerStubCommand
-Export-ModuleMember -Alias $alias
+elseif (Get-PowerStubAliasConflict $alias) {
+    Write-Warning "PowerStub: InvokeAlias '$requestedAlias' is already an existing command and was not replaced. Trying the default 'pstb'."
+    $alias = 'pstb'
+}
+if (Get-PowerStubAliasConflict $alias) {
+    Write-Warning "PowerStub: InvokeAlias '$alias' is already an existing command and was not replaced. Use Invoke-PowerStubCommand instead."
+    $alias = $null
+}
+if ($alias) {
+    Write-Verbose "Creating Invoke-PowerStubCommand alias as: $alias"
+    New-Alias $alias Invoke-PowerStubCommand
+    Export-ModuleMember -Alias $alias
+}
 
 # Tab completion.
 #
@@ -156,6 +168,7 @@ if ($psrlModule) {
 # Re-register any saved direct aliases
 Write-Verbose "Registering saved direct aliases"
 $Script:RegisteredDirectAliases = @()
+$Script:RegisteredDirectAliasFunctions = @{}
 $directAliases = Get-PowerStubConfigurationKey 'DirectAliases'
 if ($directAliases) {
     # Copy keys to array to avoid "Collection was modified" error during enumeration
@@ -166,10 +179,9 @@ if ($directAliases) {
         $stubs = Get-PowerStubConfigurationKey 'Stubs'
         if ($stubs.Keys -contains $stubName) {
             try {
-                # A name from the config file must never silently replace an existing command,
-                # unless the user created that alias with -Force, which is recorded as consent.
-                $userForced = @(Get-PowerStubConfigurationKey 'ForcedDirectAliases') -contains $aliasName
-                New-PowerStubDirectAlias -AliasName $aliasName -Stub $stubName -Force:$userForced -ErrorAction Stop | Out-Null
+                # Restore only into an unused name. Legacy ForcedDirectAliases entries
+                # are not permission to replace another command during startup.
+                Register-PowerStubDirectAlias -AliasName $aliasName -Stub $stubName -ErrorAction Stop
                 Write-Verbose "Registered direct alias '$aliasName' for stub '$stubName'"
             } catch {
                 Write-Warning "Could not register direct alias '$aliasName': $_"
@@ -192,11 +204,8 @@ $MyInvocation.MyCommand.ScriptBlock.Module.OnRemove = {
     }
 
     # Only remove the functions this module created, never a same-named command of the user's
-    foreach ($aliasName in $Script:RegisteredDirectAliases) {
-        # Note: Remove-Item does nothing for a 'function:global:' path; the unqualified path works
-        if (Test-Path "function:$aliasName") {
-            Remove-Item "function:$aliasName" -Force -ErrorAction SilentlyContinue
-        }
+    foreach ($aliasName in @($Script:RegisteredDirectAliases)) {
+        Unregister-PowerStubDirectAliasFunction $aliasName -ErrorAction SilentlyContinue
     }
 }
 

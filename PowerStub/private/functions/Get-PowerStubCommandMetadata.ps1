@@ -54,17 +54,17 @@ function Get-PowerStubCommandMetadata {
     # If CommandFile is provided, look in the same directory first
     if ($CommandFile) {
         $sameDir = Join-Path (Split-Path $CommandFile.FullName -Parent) $metadataFileName
-        if (Test-Path $sameDir) {
+        if (Test-Path -LiteralPath $sameDir) {
             $metadataPath = $sameDir
         }
     }
 
     # Fall back to standard locations
     if (-not $metadataPath) {
-        if (Test-Path $directPath) {
+        if (Test-Path -LiteralPath $directPath) {
             $metadataPath = $directPath
         }
-        elseif (Test-Path $subfolderMetadataPath) {
+        elseif (Test-Path -LiteralPath $subfolderMetadataPath) {
             $metadataPath = $subfolderMetadataPath
         }
     }
@@ -75,7 +75,7 @@ function Get-PowerStubCommandMetadata {
 
     # Get help from the metadata file
     try {
-        $help = Get-Help $metadataPath -Full -ErrorAction SilentlyContinue
+        $help = Get-Help (Get-PowerStubFilePattern -Path $metadataPath) -Full -ErrorAction SilentlyContinue
         return [PSCustomObject]@{
             Path = $metadataPath
             Help = $help

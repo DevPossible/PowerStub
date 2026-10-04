@@ -705,9 +705,9 @@ Describe "New-PowerStubDirectAlias" {
             $cmd.CommandType | Should -Be 'Function'
         }
 
-        It "Should overwrite alias when -Force is specified" {
+        It "Should reject an existing owned alias even when -Force is specified" {
             New-PowerStubDirectAlias -AliasName "forcealias" -Stub "SampleStub"
-            { New-PowerStubDirectAlias -AliasName "forcealias" -Stub "SampleStub" -Force } | Should -Not -Throw
+            { New-PowerStubDirectAlias -AliasName "forcealias" -Stub "SampleStub" -Force } | Should -Throw "*already exists*"
         }
 
         It "Should return info object with AliasName, Stub, and StubPath" {
@@ -728,13 +728,13 @@ Describe "New-PowerStubDirectAlias" {
             $directAliases['configalias'] | Should -Be 'SampleStub'
         }
 
-        It "Should not rewrite config when the persisted alias already matches" {
+        It "Should reject a repeated add without rewriting matching persisted config" {
             New-PowerStubDirectAlias -AliasName "noopalias" -Stub "SampleStub"
             $configFile = InModuleScope PowerStub { Get-PowerStubConfigurationKey 'ConfigFile' }
             $before = Get-Item -LiteralPath $configFile
 
             Start-Sleep -Milliseconds 1200
-            New-PowerStubDirectAlias -AliasName "noopalias" -Stub "SampleStub" -Force
+            { New-PowerStubDirectAlias -AliasName "noopalias" -Stub "SampleStub" -Force } | Should -Throw "*already exists*"
 
             $after = Get-Item -LiteralPath $configFile
             $after.LastWriteTimeUtc | Should -Be $before.LastWriteTimeUtc
@@ -779,6 +779,7 @@ throw 'Listing must not execute commands'
 '@ | Set-Content (Join-Path $commandsPath 'aardvark.ps1')
             Set-Content (Join-Path $commandsPath 'missing-help.ps1') "param([string]`$Environment)`nthrow 'Listing must not execute commands'"
             New-PowerStub -Name 'ListingStub' -Path $stubRoot -Force
+            Remove-PowerStubDirectAlias -AliasName ts
             New-PowerStubDirectAlias -AliasName ts -Stub 'ListingStub' -Force | Out-Null
 
             $output = if ($EntryPoint -eq 'alias') { @(ts 6>&1) } else { @(pstb ListingStub 6>&1) }
@@ -794,6 +795,7 @@ throw 'Listing must not execute commands'
 
         It "Should show an empty-stub message via the alias" {
             New-PowerStub -Name 'EmptyListingStub' -Path (Join-Path $TestDrive 'EmptyListingStub') -Force
+            Remove-PowerStubDirectAlias -AliasName ts
             New-PowerStubDirectAlias -AliasName ts -Stub 'EmptyListingStub' -Force | Out-Null
 
             (ts 6>&1 | Out-String) | Should -Match "No commands found in stub 'EmptyListingStub'\."

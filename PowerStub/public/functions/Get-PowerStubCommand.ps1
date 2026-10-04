@@ -53,7 +53,7 @@ function Get-PowerStubCommand {
     $commandsPath = Join-Path $stubRoot 'Commands'
     $commandFile = $null
 
-    if (!(Test-Path $commandsPath)) {
+    if (!(Test-Path -LiteralPath $commandsPath)) {
         Write-Warning "Commands folder not found for stub '$stub'."
         return
     }
@@ -61,7 +61,7 @@ function Get-PowerStubCommand {
     # Helper: Find a file by name in a path (direct file only, not recursive)
     $findDirectFile = {
         param($searchPath, $baseName)
-        Get-ChildItem -Path $searchPath -File -ErrorAction SilentlyContinue | Where-Object {
+        Get-ChildItem -LiteralPath $searchPath -File -ErrorAction SilentlyContinue | Where-Object {
             $_.Extension -in @('.ps1', '.exe') -and $_.BaseName -eq $baseName
         } | Select-Object -First 1
     }
@@ -70,8 +70,8 @@ function Get-PowerStubCommand {
     $findInSubfolder = {
         param($searchPath, $folderName, $baseName)
         $subfolderPath = Join-Path $searchPath $folderName
-        if (Test-Path $subfolderPath -PathType Container) {
-            Get-ChildItem -Path $subfolderPath -File -ErrorAction SilentlyContinue | Where-Object {
+        if (Test-Path -LiteralPath $subfolderPath -PathType Container) {
+            Get-ChildItem -LiteralPath $subfolderPath -File -ErrorAction SilentlyContinue | Where-Object {
                 $_.Extension -in @('.ps1', '.exe') -and $_.BaseName -eq $baseName
             } | Select-Object -First 1
         }
@@ -124,6 +124,6 @@ function Get-PowerStubCommand {
         return
     }
 
-    $commandObj = Get-Command -Name $($commandFile.FullName) -ErrorAction SilentlyContinue
+    $commandObj = Resolve-PowerStubFileCommand -Path $commandFile.FullName
     return $commandObj
 }

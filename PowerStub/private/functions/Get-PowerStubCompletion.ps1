@@ -72,7 +72,8 @@ function Get-PowerStubCompletion {
 
     $aliasStub = $null
     if ($commandName -ne 'Invoke-PowerStubCommand' -and $commandName -ne $Script:InvokeAlias) {
-        if ($Script:RegisteredDirectAliases -notcontains $commandName) { return }
+        if ($Script:RegisteredDirectAliases -notcontains $commandName -or
+            -not (Test-PowerStubDirectAliasFunction $commandName)) { return }
         $aliasStub = (Get-PowerStubConfigurationKey 'DirectAliases')[$commandName]
         if (-not $aliasStub) { return }
     }

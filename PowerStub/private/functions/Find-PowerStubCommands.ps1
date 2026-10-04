@@ -49,17 +49,17 @@ function Find-PowerStubCommands {
     $commandsPath = Join-Path $stubRoot 'Commands'
     $commands = @()
 
-    if (Test-Path $commandsPath) {
+    if (Test-Path -LiteralPath $commandsPath) {
         # 1. Get direct .ps1 and .exe files in Commands folder
-        $commands += Get-ChildItem -Path $commandsPath -File | Where-Object {
+        $commands += Get-ChildItem -LiteralPath $commandsPath -File | Where-Object {
             $_.Extension -in @('.ps1', '.exe')
         }
 
         # 2. For each subfolder, get files that match the folder name (with optional alpha./beta. prefix)
-        $subfolders = Get-ChildItem -Path $commandsPath -Directory
+        $subfolders = Get-ChildItem -LiteralPath $commandsPath -Directory
         foreach ($folder in $subfolders) {
             $folderName = $folder.Name
-            $matchingFiles = Get-ChildItem -Path $folder.FullName -File | Where-Object {
+            $matchingFiles = Get-ChildItem -LiteralPath $folder.FullName -File | Where-Object {
                 $_.Extension -in @('.ps1', '.exe') -and (
                     $_.BaseName -eq $folderName -or
                     $_.BaseName -eq "alpha.$folderName" -or
