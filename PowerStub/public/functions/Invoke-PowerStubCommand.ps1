@@ -130,5 +130,15 @@ function Invoke-PowerStubCommand {
     Write-Debug "Target args: $($targetArgs -join ', ')"
 
     Write-Host "Invoking $cmd"
-    Invoke-CheckedCommand $cmd @targetArgs
+    # Propagate target failure through this simple-function boundary without rebinding
+    # any of the target's arguments as PowerShell common parameters.
+    $pipeline = { Invoke-CheckedCommand $cmd @targetArgs }.GetSteppablePipeline($MyInvocation.CommandOrigin)
+    try {
+        $pipeline.Begin($false, $ExecutionContext)
+        $pipeline.Process()
+        $pipeline.End()
+    }
+    finally {
+        $pipeline.Dispose()
+    }
 }

@@ -444,7 +444,7 @@ PowerStub/                          # Repository root
 ├── tests/                          # Pester test files
 │   ├── PowerStub.tests.ps1         # Main test suite
 │   ├── ConfigSafety.tests.ps1      # Config persistence, concurrency and alias safety
-│   ├── KnownIssues.tests.ps1       # Expected-to-fail tests for unfixed bugs (tag: KnownIssue)
+│   ├── ExecutionStatus.tests.ps1   # Success/failure status, chains, streams, and process exits
 │   └── sample_stub_root/           # Sample stub for integration tests
 ├── dev-reload.ps1                  # Reload module for local testing
 ├── dev-test.ps1                    # Run Pester test suite
@@ -563,7 +563,7 @@ Tests are located in `tests/*.tests.ps1`. They run against a throwaway config fo
 | Direct Aliases | Create, remove, tab completion for aliases |
 | Virtual Verbs | Search and help built-in commands |
 
-`tests/KnownIssues.tests.ps1` holds tests for known, unfixed bugs. They are expected to fail and are excluded from `dev-test.ps1` and CI; run them with `.\dev-test.ps1 -Tag KnownIssue`.
+`tests/ExecutionStatus.tests.ps1` verifies `$?`, `&&`, `||`, `$LASTEXITCODE`, output streams, and fresh `pwsh -Command` process exits for scripts and native commands through both `pstb` and direct aliases. These regressions run in the regular test suite and CI.
 
 The `tests/sample_stub_root/` folder contains a pre-configured stub with various command types for integration testing.
 

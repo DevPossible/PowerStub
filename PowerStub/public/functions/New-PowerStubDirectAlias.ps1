@@ -80,7 +80,19 @@ function New-PowerStubDirectAlias {
         return
     }
 
-    Invoke-PowerStubCommand '$escapedStub' @args
+    # Every simple-function boundary must link the target's failure status to its caller.
+    # Preserve @args (including its parameter-name markers) in a local variable because
+    # a scriptblock's own `$args would refer to that scriptblock's arguments instead.
+    `$targetArgs = `$args
+    `$pipeline = { Invoke-PowerStubCommand '$escapedStub' @targetArgs }.GetSteppablePipeline(`$MyInvocation.CommandOrigin)
+    try {
+        `$pipeline.Begin(`$false, `$ExecutionContext)
+        `$pipeline.Process()
+        `$pipeline.End()
+    }
+    finally {
+        `$pipeline.Dispose()
+    }
 "@
 
     # Create the function via ScriptBlock instead of Invoke-Expression

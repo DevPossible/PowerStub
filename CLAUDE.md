@@ -251,7 +251,7 @@ Import-PowerStubConfiguration -Reset
 ### Pipeline Stages (in order)
 
 1. **validate** - Verify GitHub PAT has access to the mirror repo
-2. **test** - Run Pester tests in a Linux container (Windows-only EXE tests are skipped there; `KnownIssue` tests are excluded)
+2. **test** - Run Pester tests in a Linux container (Windows-only EXE tests are skipped there; `ParsingMatrix` tests are excluded)
 3. **version** - Calculate next version from git tags + conventional commits (`scripts/get-version.ps1`)
 4. **mirror** - Tag the release, push the tag to GitLab, push code and tag to GitHub
 5. **publish** - Stamp the version into the manifest and publish a clean copy to PowerShell Gallery
@@ -360,7 +360,6 @@ Common scopes for this project: `config`, `commands`, `alias`, `completion`, `gi
 
 Command parsing is delicate: change it deliberately, and check the parsing matrix (see Argument Pass-Through).
 
-- `$?`, `&&` and `||` see success after a failed command; only `$LASTEXITCODE` is reliable. Expected-to-fail tests are in `tests/KnownIssues.tests.ps1`.
 - The 15 parsing-matrix calls that still differ from a direct call: a bare `--` is removed by PowerShell before pstb sees it, and for executables `-x:value` is split and an unquoted `a,b,c` becomes three arguments. Quoting (`'--'`, `'-c:v'`, `'a,b,c'`) works around all three.
 - By design, an explicit string array splat such as `@('-Name', 'x')` is passed as plain values, exactly as in a direct call. (pstb used to re-parse it into named parameters.) Forwarding the automatic `$args` with `@args` still carries parameter names.
 
@@ -374,7 +373,7 @@ Command parsing is delicate: change it deliberately, and check the parsing matri
 
 ## Testing Approach
 
-Tests use Pester framework (`tests/*.tests.ps1`). Every test file sets `POWERSTUB_CONFIG_DIR` to a throwaway folder before importing the module, so tests never touch the real config - keep that in any new test file. `tests/KnownIssues.tests.ps1` holds expected-to-fail tests for unfixed bugs (tag `KnownIssue`, excluded from `dev-test.ps1` and CI; run with `./dev-test.ps1 -Tag KnownIssue`). `tests/ParsingMatrix.tests.ps1` runs 300 sample calls (`ParsingMatrix.cases.ps1`: scripts, a generic EXE group and real-world CLI command lines) both directly and through `pstb` and requires identical results; it is tagged `ParsingMatrix`, also excluded by default, and `./tests/Show-ParsingMatrix.ps1` summarizes the disagreements. Any change to argument parsing must not lower its agreement count. Key test areas:
+Tests use Pester framework (`tests/*.tests.ps1`). Every test file sets `POWERSTUB_CONFIG_DIR` to a throwaway folder before importing the module, so tests never touch the real config - keep that in any new test file. `tests/ExecutionStatus.tests.ps1` gates success/failure status, pipeline chains, streams, and fresh-process exit behavior for script/native targets and direct aliases. `tests/ParsingMatrix.tests.ps1` runs 300 sample calls (`ParsingMatrix.cases.ps1`: scripts, a generic EXE group and real-world CLI command lines) both directly and through `pstb` and requires identical results; it is tagged `ParsingMatrix`, also excluded by default, and `./tests/Show-ParsingMatrix.ps1` summarizes the disagreements. Any change to argument parsing must not lower its agreement count. Key test areas:
 
 - Configuration loading/saving
 - Stub registration/removal
@@ -455,4 +454,4 @@ Get-Command "path/to/script.ps1" | Select-Object -ExpandProperty Parameters
 1. **Module scope variables**: Use `$Script:` prefix for module-level state
 2. **Completion**: comes from the `TabExpansion2` wrapper, not from parameters or `Register-ArgumentCompleter`
 3. **Never add a `param` block or `[CmdletBinding()]` to `Invoke-PowerStubCommand`**: see Argument Pass-Through
-4. **Exit code handling**: `.exe` files set `$LASTEXITCODE`, scripts may not
+4. **Exit code handling**: `.exe` files set `$LASTEXITCODE`, scripts may not. Each simple-function proxy boundary uses a steppable pipeline with `Begin($false, $ExecutionContext)` to propagate failure and route streams correctly. Do not replace it with a plain call or omit the execution context: those lose status or captured output.

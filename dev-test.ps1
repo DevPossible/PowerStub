@@ -30,7 +30,7 @@
     # Runs only tests with "Alpha" in the name
 
 .EXAMPLE
-    .\dev-test.ps1 -Tag KnownIssue
+    .\dev-test.ps1 -Tag ParsingMatrix
     # Runs the tests for known, unfixed bugs (expected to fail; excluded by default)
 
 .EXAMPLE
@@ -84,9 +84,9 @@ if ($Tag) {
     $config.Filter.Tag = $Tag
 }
 else {
-    # tests/KnownIssues.tests.ps1 and tests/ParsingMatrix.tests.ps1 document unfixed bugs and
-    # are expected to fail. Run them explicitly with: .\dev-test.ps1 -Tag KnownIssue (or ParsingMatrix)
-    $config.Filter.ExcludeTag = 'KnownIssue', 'ParsingMatrix'
+    # The parsing matrix still includes known argument differences.
+    # Run it explicitly with: .\dev-test.ps1 -Tag ParsingMatrix
+    $config.Filter.ExcludeTag = 'ParsingMatrix'
 }
 
 # Always enable PassThru so $result is populated for exit code checking

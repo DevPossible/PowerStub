@@ -71,16 +71,28 @@ function Invoke-CheckedCommand {
         }
     }
 
-    & $command @switchValues @targetArgs
+    # Link the target pipeline to this function's command runtime. A plain call resets
+    # the caller's $? to success when a simple function returns, even after exit 7.
+    # Keep the argument splats intact: advanced-function binding would consume CLI flags.
+    $pipeline = { & $command @switchValues @targetArgs }.GetSteppablePipeline($MyInvocation.CommandOrigin)
+    try {
+        $pipeline.Begin($false, $ExecutionContext)
+        $pipeline.Process()
+        $pipeline.End()
+    }
+    finally {
+        $pipeline.Dispose()
+    }
 
-    $success = $?
+    # Stepping propagates the pipeline failure flag directly. $? here only describes
+    # the successful End/Dispose method call; use LASTEXITCODE for the exit diagnostic.
     if (Test-Path VARIABLE:GLOBAL:LASTEXITCODE) { $exitCode = $GLOBAL:LASTEXITCODE; }
     else {
         if (Test-Path VARIABLE:LASTEXITCODE) { $exitCode = $LASTEXITCODE; }
         else { $exitCode = 0; }
     }
 
-    if (!$success -or ($exitCode -ne 0)) {
+    if ($exitCode -ne 0) {
         Write-Debug $("$command exited with error code " + $exitCode)
         # Extract just the command name for cleaner error message
         $cmdName = Split-Path -Leaf $command

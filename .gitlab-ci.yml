@@ -99,8 +99,8 @@ test:
         $config = New-PesterConfiguration
         $config.Run.Path = "$env:CI_PROJECT_DIR/tests"
         $config.Run.Exit = $true
-        # KnownIssue and ParsingMatrix tests document unfixed bugs and are expected to fail
-        $config.Filter.ExcludeTag = "KnownIssue", "ParsingMatrix"
+        # ParsingMatrix still includes known argument differences; execution-status tests gate releases
+        $config.Filter.ExcludeTag = "ParsingMatrix"
         $config.Output.Verbosity = "Detailed"
         $config.TestResult.Enabled = $true
         $config.TestResult.OutputPath = "$env:TEST_RESULTS_PATH/testResults.xml"
