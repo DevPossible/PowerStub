@@ -27,7 +27,7 @@ variables:
   GIT_DEPTH: "0"
   MODULE_PATH: "$CI_PROJECT_DIR/PowerStub"
   TEST_RESULTS_PATH: "$CI_PROJECT_DIR/TestResults"
-  GITHUB_REPO: "DevPossible/power-stub"
+  GITHUB_REPO: "DevPossible/PowerStub"
   POWERSHELL_TELEMETRY_OPTOUT: "1"
 
 .powershell:

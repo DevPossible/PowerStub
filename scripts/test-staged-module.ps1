@@ -25,7 +25,9 @@ try {
     Assert-Package (-not (Test-Path -LiteralPath (Join-Path $ModulePath 'PowerStub.json'))) 'A legacy user configuration shipped.'
     $manifestData = Import-PowerShellDataFile -LiteralPath $manifestPath
     Assert-Package ($manifestData.ModuleVersion -eq $ExpectedVersion) 'Incorrect package version.'
-    Assert-Package ($manifestData.PrivateData.PSData.LicenseUri -eq "https://github.com/DevPossible/power-stub/blob/v$ExpectedVersion/LICENSE.txt") 'License link is not release-stable.'
+    Assert-Package ($manifestData.PrivateData.PSData.LicenseUri -eq "https://github.com/DevPossible/PowerStub/blob/v$ExpectedVersion/LICENSE.txt") 'License link is not release-stable.'
+    Assert-Package ($manifestData.PrivateData.PSData.ProjectUri -eq 'https://github.com/DevPossible/PowerStub') 'Project link does not use the canonical repository.'
+    Assert-Package ($manifestData.PrivateData.PSData.ReleaseNotes -eq 'See https://github.com/DevPossible/PowerStub/releases') 'Release notes link does not use the canonical repository.'
     Import-Module $manifestPath -Force
     foreach ($name in $manifestData.FunctionsToExport) {
         Assert-Package ($null -ne (Get-Command $name -Module PowerStub -ErrorAction SilentlyContinue)) "Missing manifest export: $name"

@@ -35,7 +35,7 @@ foreach ($file in @('LICENSE.txt', 'README.md')) {
 }
 $manifestPath = Join-Path $DestinationPath 'PowerStub.psd1'
 Update-ModuleManifest -Path $manifestPath -ModuleVersion $Version `
-    -LicenseUri "https://github.com/DevPossible/power-stub/blob/v$Version/LICENSE.txt"
+    -LicenseUri "https://github.com/DevPossible/PowerStub/blob/v$Version/LICENSE.txt"
 $manifest = Test-ModuleManifest -Path $manifestPath
 if ($manifest.Version.ToString() -ne $Version) { throw 'Staged module version does not match the release.' }
 Write-Host "Staged PowerStub $Version at $DestinationPath"

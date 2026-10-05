@@ -38,9 +38,9 @@
     PrivateData = @{
         PSData = @{
             Tags         = @('PowerShell', 'CLI', 'Stub', 'Proxy', 'Commands', 'Tools', 'Organizer')
-            LicenseUri   = 'https://github.com/DevPossible/power-stub/blob/main/LICENSE.txt'
-            ProjectUri   = 'https://github.com/DevPossible/power-stub'
-            ReleaseNotes = 'See https://github.com/DevPossible/power-stub/releases'
+            LicenseUri   = 'https://github.com/DevPossible/PowerStub/blob/main/LICENSE.txt'
+            ProjectUri   = 'https://github.com/DevPossible/PowerStub'
+            ReleaseNotes = 'See https://github.com/DevPossible/PowerStub/releases'
         }
     }
 }

@@ -2,7 +2,7 @@
 
 [![PowerShell Gallery](https://img.shields.io/powershellgallery/v/PowerStub?label=PSGallery&color=blue)](https://www.powershellgallery.com/packages/PowerStub)
 [![PowerShell Gallery Downloads](https://img.shields.io/powershellgallery/dt/PowerStub?label=Downloads&color=green)](https://www.powershellgallery.com/packages/PowerStub)
-[![GitHub](https://img.shields.io/github/license/DevPossible/power-stub)](https://github.com/DevPossible/power-stub/blob/main/LICENSE.txt)
+[![GitHub](https://img.shields.io/github/license/DevPossible/PowerStub)](https://github.com/DevPossible/PowerStub/blob/main/LICENSE.txt)
 
 A PowerShell module for organizing scripts, executables, and CLI tools using command proxies. Stop cluttering your PATH - organize your tools into logical namespaces and access them through a single entry point.
 
@@ -60,14 +60,14 @@ Add-Content $PROFILE "`nImport-Module PowerStub"
 
 ### Option 2: From a GitHub Source Archive
 
-[GitHub Releases](https://github.com/DevPossible/power-stub/releases) provides automatic **Source code (zip)** archives. These are source snapshots, not separately built module ZIP assets.
+[GitHub Releases](https://github.com/DevPossible/PowerStub/releases) provides automatic **Source code (zip)** archives. These are source snapshots, not separately built module ZIP assets.
 
 1. Select the release tag you want and download **Source code (zip)**.
-2. Extract it. For example, a `v2.0.0` archive extracts to `power-stub-2.0.0/`.
+2. Extract it. For example, a `v2.0.0` archive extracts to `PowerStub-2.0.0/`.
 3. Import the manifest in the **nested** `PowerStub/` module directory:
 
 ```powershell
-Import-Module 'C:\Modules\power-stub-2.0.0\PowerStub\PowerStub.psd1'
+Import-Module 'C:\Modules\PowerStub-2.0.0\PowerStub\PowerStub.psd1'
 ```
 
 Replace `2.0.0` with the archive's actual tag. The source manifest has a development baseline version; CI stamps the Gallery package separately. Record the selected tag (or commit for a Git checkout) as the source identity. Use the Gallery package if you need `Get-Module PowerStub` to report the published release version.
@@ -77,11 +77,11 @@ Replace `2.0.0` with the archive's actual tag. The source manifest has a develop
 Clone the repository for development or to get the latest changes:
 
 ```powershell
-git clone https://github.com/DevPossible/power-stub.git
-Import-Module ./power-stub/PowerStub/PowerStub.psd1
+git clone https://github.com/DevPossible/PowerStub.git
+Import-Module ./PowerStub/PowerStub/PowerStub.psd1
 
 # Record the exact source revision
-git -C ./power-stub rev-parse HEAD
+git -C ./PowerStub rev-parse HEAD
 ```
 
 Use the manifest for ordinary imports so the PowerShell requirement and public export list are enforced.
@@ -548,8 +548,8 @@ Install-Module Pester -Force -SkipPublisherCheck
 #### 1. Clone and Set Up
 
 ```powershell
-git clone https://github.com/DevPossible/power-stub.git
-cd power-stub
+git clone https://github.com/DevPossible/PowerStub.git
+cd PowerStub
 ```
 
 #### 2. Load the Module for Testing
@@ -688,7 +688,7 @@ DevPossible LLC
 
 ## Contributing
 
-Contributions are welcome through [GitHub issues and pull requests](https://github.com/DevPossible/power-stub). GitHub is the public mirror; the authoritative repository and release pipeline run in private GitLab. Maintainers review public contributions and import accepted changes there, then the release pipeline mirrors them back to GitHub. Public GitHub activity alone does not establish the private pipeline's status.
+Contributions are welcome through [GitHub issues and pull requests](https://github.com/DevPossible/PowerStub). GitHub is the public mirror; the authoritative repository and release pipeline run in private GitLab. Maintainers review public contributions and import accepted changes there, then the release pipeline mirrors them back to GitHub. Public GitHub activity alone does not establish the private pipeline's status.
 
 For a reproducible bug report, include your OS, `$PSVersionTable.PSVersion`, module version and install method, a minimal command, and its direct-versus-proxy output. Remove credentials and private paths before posting.
 

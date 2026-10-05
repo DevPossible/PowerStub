@@ -1299,7 +1299,7 @@ Describe "Argument Passing - Mixed Scenarios" {
     Context "Zero-Argument Invocation" {
         # These tests verify that commands can be invoked without arguments
         # and that no spurious arguments (like --%  ) are passed to the target command.
-        # Regression tests for: https://github.com/DevPossible/power-stub/issues/XX
+        # Regression tests for: https://github.com/DevPossible/PowerStub/issues/XX
 
         It "Should invoke command with no arguments successfully" {
             # The no-args command will report UNEXPECTED_ARG if any args are passed

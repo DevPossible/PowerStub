@@ -16,6 +16,16 @@ AfterAll {
     }
 }
 Describe 'Package and documentation release contracts' -Tag 'Packaging' {
+    It 'uses the canonical PowerStub repository in release and package inputs' {
+        $manifest = Import-PowerShellDataFile -LiteralPath (Join-Path $script:PackageRepo 'PowerStub/PowerStub.psd1')
+        $manifest.PrivateData.PSData.ProjectUri | Should -BeExactly 'https://github.com/DevPossible/PowerStub'
+        $manifest.PrivateData.PSData.LicenseUri | Should -BeExactly 'https://github.com/DevPossible/PowerStub/blob/main/LICENSE.txt'
+        $manifest.PrivateData.PSData.ReleaseNotes | Should -BeExactly 'See https://github.com/DevPossible/PowerStub/releases'
+        $script:PackageCi | Should -Match 'GITHUB_REPO: "DevPossible/PowerStub"'
+        foreach ($file in @('README.md', '.gitlab-ci.yml', 'pipelines/release.yml', 'create-release.ps1', 'scripts/stage-module.ps1', 'scripts/test-staged-module.ps1')) {
+            Get-Content -LiteralPath (Join-Path $script:PackageRepo $file) -Raw | Should -Not -Match 'power-stub'
+        }
+    }
     It 'stages the license, README, version and exports and passes a fresh-process package smoke' {
         $output = & $script:PackagePwsh -NoProfile -File (Join-Path $script:PackageRepo 'scripts/test-staged-module.ps1') -ModulePath $script:PackageStage -ExpectedVersion 9.8.7 2>&1
         $LASTEXITCODE | Should -Be 0 -Because ($output | Out-String)
@@ -69,7 +79,7 @@ Remove-Module PowerStub
         $script:PackageReadme | Should -Not -Match 'no manifest changes needed'
         $script:PackageReadme | Should -Match 'FunctionsToExport'
         $script:PackageReadme | Should -Match 'POWERSTUB_CONFIG_DIR/config.json'
-        $script:PackageReadme | Should -Match 'power-stub-2\.0\.0\\PowerStub\\PowerStub.psd1'
+        $script:PackageReadme | Should -Match 'PowerStub-2\.0\.0\\PowerStub\\PowerStub.psd1'
         $script:PackageReadme | Should -Match 'public mirror'
         $script:PackageReadme | Should -Match 'pstb update --check'
     }

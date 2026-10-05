@@ -223,5 +223,5 @@ Write-Host "Main branch has been updated and pushed to all remotes."
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Yellow
 Write-Host "  - CI/CD pipeline will handle PSGallery publish and GitHub release"
-Write-Host "  - Monitor pipeline at: https://gitlab.devpossible.com/devpossible/opensource/power-stub/-/pipelines"
+Write-Host "  - Monitor pipeline at: https://gitlab.devpossible.com/devpossible/opensource/PowerStub/-/pipelines"
 Write-Host ""

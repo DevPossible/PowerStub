@@ -13,7 +13,7 @@ variables:
   - name: testResultsPath
     value: '$(Build.SourcesDirectory)/TestResults'
   - name: githubRepo
-    value: 'DevPossible/power-stub'
+    value: 'DevPossible/PowerStub'
 
 stages:
   # Stage 1: Validate GitHub access

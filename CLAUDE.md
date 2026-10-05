@@ -239,7 +239,7 @@ Import-PowerStubConfiguration -Reset
 ## CI/CD
 
 **Primary:** GitLab CI (`.gitlab-ci.yml`) on gitlab.devpossible.com
-**Mirror:** GitHub (public mirror at DevPossible/power-stub)
+**Mirror:** GitHub (public mirror at DevPossible/PowerStub)
 **Disabled:** `pipelines/release.yml` (Azure DevOps) is kept for reference only
 
 | Pipeline | Trigger | Purpose |
