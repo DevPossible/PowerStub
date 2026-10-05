@@ -28,7 +28,7 @@ function Set-PowerStubConfigurationKey {
 
     # Validate against known config keys to prevent orphan keys from typos
     $knownKeys = @(
-        'Stubs', 'EnablePrefix:Alpha', 'EnablePrefix:Beta', 'GitEnabled', 'GitAvailable',
+        'Stubs', 'EnablePrefix:Alpha', 'EnablePrefix:Beta', 'GitEnabled', 'UpdateCheckIntervalHours', 'GitAvailable',
         'InvokeAlias', 'DirectAliases', 'ForcedDirectAliases', 'ModulePath', 'ConfigFile', 'LegacyConfigFile', 'InternalConfigKeys',
         'ConfigFileLastWriteUtc'
     )

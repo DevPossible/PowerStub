@@ -79,6 +79,13 @@ PowerStub/                        # Repository root
 | `Test-PowerStubReservedName.ps1` | Utility | Names that aliases must never shadow (git, cd, ...) |
 | `Get-PowerStubCommandMetadata.ps1` | Display | Reads metadata for executable commands |
 | `Show-PowerStubCommands.ps1` | Display | Lists the commands in a stub |
+| `Invoke-PowerStubUpdateCheck.ps1` | Git | Per-command "not the latest version" notice; starts background checks when due |
+| `Start-PowerStubUpdateCheck.ps1` | Git | Launches the detached background fetch (`private/scripts/Update-PowerStubRemoteStatus.ps1`) |
+| `Get-PowerStubUpdateCheckFile.ps1` | Git | Path of a stub's update check state file |
+| `Read-PowerStubUpdateCheckState.ps1` | Git | Reads a state file; `$null` when missing or unreadable |
+| `Write-PowerStubUpdateCheckState.ps1` | Git | Writes a state file in one step (also used by the background script) |
+| `Clear-PowerStubUpdateCheckState.ps1` | Git | Forgets a repository's results after `pstb update` |
+| `Test-PowerStubInteractiveSession.ps1` | Utility | False in CI or `-NonInteractive` sessions |
 
 ## Architecture Patterns
 
@@ -116,6 +123,15 @@ When creating a new stub with `New-PowerStub`, if git is enabled and the path is
 
 **Module load behavior:**
 Import checks whether Git is installed but never fetches or checks remote status. Users explicitly run `pstb update --check` or `pstb update <stub> --check`. Fetch failures must be reported rather than described as up to date.
+
+**Background update check (per command run):**
+`Invoke-PowerStubCommand` calls `Invoke-PowerStubUpdateCheck` after resolving the command, inside a try/catch so nothing it does can stop the command. Rules:
+
+- The hot path reads one state file (`<config dir>/update-check/<hash of stub path>.json`) and never runs Git. It prints "You do not have the latest version of ..." with `Write-Host` (never stdout, never `Write-Warning`), once per repo per session (`$Script:UpdateNoticesShown`)
+- When the result is older than `UpdateCheckIntervalHours` (default 4, `0` = off), `Start-PowerStubUpdateCheck` launches `private/scripts/Update-PowerStubRemoteStatus.ps1` in a hidden, detached `pwsh` (via `setsid` on Unix) and returns. Not a job: pstb often runs in short-lived processes. The script dot-sources only `Get-PowerStubGitInfo` and `Write-PowerStubUpdateCheckState`
+- A `<state>.lock` claim created with `CreateNew` allows one check per stub at a time; a claim older than 30 minutes is taken over
+- Off when Git is unavailable/disabled, `POWERSTUB_NO_UPDATE_CHECK` is set, or `Test-PowerStubInteractiveSession` is false (CI, TF_BUILD, `-NonInteractive`). Stubs outside a repo record `NotRepository` and cost one background check per interval
+- State is never stored in `config.json`. A successful `pstb update` clears every state file for that repo (`Clear-PowerStubUpdateCheckState`)
 
 **Update command:**
 
@@ -388,7 +404,7 @@ Command parsing is delicate: change it deliberately, and check the parsing matri
 
 ## Testing Approach
 
-Tests use Pester framework (`tests/*.tests.ps1`). Every test file sets `POWERSTUB_CONFIG_DIR` to a throwaway folder before importing the module, so tests never touch the real config - keep that in any new test file. `tests/ExecutionStatus.tests.ps1` gates success/failure status, pipeline chains, streams, and fresh-process exit behavior for script/native targets and direct aliases. `tests/ParsingMatrix.tests.ps1` runs 300 sample calls (`ParsingMatrix.cases.ps1`: scripts, a generic EXE group and real-world CLI command lines) both directly and through `pstb` and requires identical results; it is tagged `ParsingMatrix` and its passing cases run by default. Only exact, platform-specific audited mismatches carry `KnownIssue`. Use `./dev-test.ps1 -Tag ParsingMatrix -IncludeKnownIssues` or `./tests/Show-ParsingMatrix.ps1` to include and inspect those failures. Linux native cases use an available C compiler, Windows uses .NET Framework `csc.exe`; local unsupported/missing-compiler runs skip native cases with a warning, while CI requires them. Any change to argument parsing must not lower its agreement count. Key test areas:
+Tests use Pester framework (`tests/*.tests.ps1`). Every test file sets `POWERSTUB_CONFIG_DIR` to a throwaway folder before importing the module, so tests never touch the real config - keep that in any new test file. They also set `POWERSTUB_NO_UPDATE_CHECK=1` so running commands does not start background Git fetches; only `tests/UpdateCheck.tests.ps1` exercises the update check. `tests/ExecutionStatus.tests.ps1` gates success/failure status, pipeline chains, streams, and fresh-process exit behavior for script/native targets and direct aliases. `tests/ParsingMatrix.tests.ps1` runs 300 sample calls (`ParsingMatrix.cases.ps1`: scripts, a generic EXE group and real-world CLI command lines) both directly and through `pstb` and requires identical results; it is tagged `ParsingMatrix` and its passing cases run by default. Only exact, platform-specific audited mismatches carry `KnownIssue`. Use `./dev-test.ps1 -Tag ParsingMatrix -IncludeKnownIssues` or `./tests/Show-ParsingMatrix.ps1` to include and inspect those failures. Linux native cases use an available C compiler, Windows uses .NET Framework `csc.exe`; local unsupported/missing-compiler runs skip native cases with a warning, while CI requires them. Any change to argument parsing must not lower its agreement count. Key test areas:
 
 - Configuration loading/saving
 - Stub registration/removal

@@ -86,6 +86,7 @@ function Invoke-PowerStubUpdate {
             Write-Host "Updating stub '$targetStub'..." -ForegroundColor Cyan
             $result = Update-PowerStubGitRepo -Path $stubPath
             if ($result.Success) {
+                Clear-PowerStubUpdateCheckState -RepoRoot $result.Path
                 Write-Host "  $($result.Message)" -ForegroundColor Green
             }
             else {
@@ -119,6 +120,7 @@ function Invoke-PowerStubUpdate {
                     Write-Host "Updating stub '$stubName' ($($gitInfo.RepoRoot))..." -ForegroundColor Cyan
                     $result = Update-PowerStubGitRepo -Path $stubPath
                     if ($result.Success) {
+                        Clear-PowerStubUpdateCheckState -RepoRoot $result.Path
                         $updatedCount++
                         Write-Host "  $($result.Message)" -ForegroundColor Green
                     }

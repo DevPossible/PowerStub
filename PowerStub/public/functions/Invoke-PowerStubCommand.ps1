@@ -134,6 +134,15 @@ function Invoke-PowerStubCommand {
 
     $cmd = $commandObj.Path
 
+    # Say so when the stub's repository is behind its remote. This never runs Git in the
+    # foreground, and nothing that goes wrong here may stop the command from running.
+    try {
+        Invoke-PowerStubUpdateCheck -Stub $stub -StubPath (Get-PowerStubPath -StubConfig $stubs[$stub]) -ErrorAction Stop
+    }
+    catch {
+        Write-Debug "PowerStub update check skipped: $_"
+    }
+
     Write-Debug "Command path: $cmd"
     Write-Debug "Target args: $($targetArgs -join ', ')"
 

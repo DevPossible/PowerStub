@@ -192,8 +192,10 @@ if ($directAliases) {
     }
 }
 
-# NOTE: Git status checks are NOT performed on module load for performance.
-# Use 'pstb update --check' to check for updates manually.
+# NOTE: Git status checks are NOT performed on module load for performance. Running a
+# command checks its stub in the background at most every UpdateCheckIntervalHours
+# (Invoke-PowerStubUpdateCheck); 'pstb update --check' checks immediately.
+$Script:UpdateNoticesShown = @{}
 
 # Cleanup direct aliases on module removal
 $MyInvocation.MyCommand.ScriptBlock.Module.OnRemove = {

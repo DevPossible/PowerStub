@@ -12,6 +12,7 @@
 BeforeAll {
     $script:ReleaseManifest = (Resolve-Path (Join-Path $PSScriptRoot '../PowerStub/PowerStub.psd1')).Path
     $script:ReleaseOriginalConfig = $env:POWERSTUB_CONFIG_DIR
+    $env:POWERSTUB_NO_UPDATE_CHECK = '1'  # tests must not start background Git update checks
     $script:ReleaseOriginalLocation = Get-Location
     $script:ReleaseOriginalTab = (Get-Command TabExpansion2).ScriptBlock
 
@@ -49,6 +50,7 @@ BeforeAll {
 AfterAll {
     Remove-Module PowerStub -Force -ErrorAction SilentlyContinue
     $env:POWERSTUB_CONFIG_DIR = $script:ReleaseOriginalConfig
+    Remove-Item Env:\POWERSTUB_NO_UPDATE_CHECK -ErrorAction SilentlyContinue
     Set-Location -LiteralPath $script:ReleaseOriginalLocation.Path
     Set-Item function:global:TabExpansion2 $script:ReleaseOriginalTab
 }

@@ -37,7 +37,7 @@ pstb DevOps deploy-app -Environment prod
 - **Zero PATH Pollution**: Single alias (`pstb`) provides access to all your tools
 - **Built-in Commands**: Search across stubs and get help for any command
 - **Direct Aliases**: Create shortcut aliases for frequently used stubs
-- **Git Integration**: Detect Git-based stub repositories and explicitly check or pull updates
+- **Git Integration**: Detect Git-based stub repositories, get notified in the background when one is behind, and check or pull updates
 
 ## Installation
 
@@ -365,6 +365,7 @@ The persisted JSON looks like this (Git-backed stubs can instead store a `Path` 
 | `EnablePrefix:Alpha` | Boolean | `false` | Include `alpha.*` prefixed commands |
 | `EnablePrefix:Beta` | Boolean | `false` | Include `beta.*` prefixed commands |
 | `GitEnabled` | Boolean | `true` | Allow Git integration when Git is installed; loaded when the module imports |
+| `UpdateCheckIntervalHours` | Number | `4` | How often running a command checks its stub's repository for updates in the background; `0` turns the check off |
 
 ## Command Lifecycle
 
@@ -410,9 +411,29 @@ When you register a new stub with `New-PowerStub`, PowerStub automatically detec
 New-PowerStub -Name "DevOps" -Path "C:\Tools\DevOps"
 ```
 
+### Automatic Update Notices
+
+When you run a command from a stub in a Git repository, PowerStub tells you if the repository is behind its remote:
+
+```text
+You do not have the latest version of 'DevOps' (3 commit(s) behind). Run 'pstb update DevOps' to get the latest version.
+```
+
+The check never slows the command down. The command only reads the result of the last check. When that result is older than `UpdateCheckIntervalHours` (4 hours by default), a new `git fetch` runs in a hidden background process, so its result appears on a later run. The notice is shown once per repository per PowerShell session, through `Write-Host`, so it never mixes with a command's output. `pstb update` clears it.
+
+Checks are per stub, so stubs inside and outside Git repositories can be mixed. Nothing is checked or shown when:
+
+- Git is not installed, or `GitEnabled` is `false`
+- the stub is not in a Git repository, or its branch has no upstream
+- `UpdateCheckIntervalHours` is `0`
+- the `POWERSTUB_NO_UPDATE_CHECK` environment variable is set (to anything but `0` or `false`)
+- the session is not interactive: a CI job (`CI` or `TF_BUILD` is set) or `pwsh -NonInteractive`
+
+A fetch that fails, for example offline or when the remote needs credentials, shows nothing. The background check never prompts for credentials. Results are kept in an `update-check` folder next to `config.json`, never in `config.json` itself.
+
 ### Checking for Updates
 
-Importing PowerStub does **not** fetch or check repositories. Run a check explicitly:
+Importing PowerStub does **not** fetch or check repositories. To check right away, run:
 
 ```powershell
 # Check all Git-tracked stubs without pulling

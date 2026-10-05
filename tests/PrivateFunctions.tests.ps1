@@ -29,6 +29,7 @@ BeforeAll {
     # Point the module at a throwaway config dir so the tests never touch the real config
     $script:TestConfigDir = Join-Path ([System.IO.Path]::GetTempPath()) "PSTBTestConfig_$([guid]::NewGuid())"
     $env:POWERSTUB_CONFIG_DIR = $script:TestConfigDir
+    $env:POWERSTUB_NO_UPDATE_CHECK = '1'  # tests must not start background Git update checks
 
     $modulePath = Join-Path $PSScriptRoot '..\PowerStub\PowerStub.psm1'
     Import-Module $modulePath -Force
@@ -39,6 +40,7 @@ BeforeAll {
 AfterAll {
     Remove-Module -Name 'PowerStub' -Force -ErrorAction SilentlyContinue
     Remove-Item Env:\POWERSTUB_CONFIG_DIR -ErrorAction SilentlyContinue
+    Remove-Item Env:\POWERSTUB_NO_UPDATE_CHECK -ErrorAction SilentlyContinue
     if (Test-Path -LiteralPath $script:TestConfigDir) {
         Remove-Item -LiteralPath $script:TestConfigDir -Recurse -Force
     }

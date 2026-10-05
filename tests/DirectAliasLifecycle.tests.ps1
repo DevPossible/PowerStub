@@ -18,6 +18,7 @@
 BeforeAll {
     $script:AliasManifest = (Resolve-Path (Join-Path $PSScriptRoot '../PowerStub/PowerStub.psd1')).Path
     $script:AliasOriginalConfig = $env:POWERSTUB_CONFIG_DIR
+    $env:POWERSTUB_NO_UPDATE_CHECK = '1'  # tests must not start background Git update checks
     $script:AliasOriginalModule = @(Get-Module PowerStub | Select-Object -ExpandProperty Path)
     $script:AliasOriginalTab = (Get-Command TabExpansion2 -CommandType Function).ScriptBlock
     $script:AliasPwsh = (Get-Process -Id $PID).Path
@@ -156,6 +157,7 @@ $ErrorActionPreference = 'Stop'
 AfterAll {
     Remove-Module PowerStub -Force -ErrorAction SilentlyContinue
     $env:POWERSTUB_CONFIG_DIR = $script:AliasOriginalConfig
+    Remove-Item Env:\POWERSTUB_NO_UPDATE_CHECK -ErrorAction SilentlyContinue
     foreach ($path in $script:AliasOriginalModule) { Import-Module $path -Force -WarningAction SilentlyContinue }
     Set-Item function:global:TabExpansion2 $script:AliasOriginalTab
 }

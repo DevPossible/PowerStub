@@ -40,6 +40,7 @@ function Get-PowerStubConfigurationDefaults {
         'EnablePrefix:Alpha' = $false
         'EnablePrefix:Beta'  = $false
         'GitEnabled'         = $true
+        'UpdateCheckIntervalHours' = 4
         'GitAvailable'       = $false
         'ConfigFileLastWriteUtc' = $null
     }

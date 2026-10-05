@@ -57,7 +57,7 @@ Describe "Parsing matrix" -Tag 'ParsingMatrix' -ForEach @{
         $script:MatrixCompiler = $Compiler
         $script:NativeMatrixAvailable = $NativeAvailable
         $script:OriginalEnvironment = @{}
-        foreach ($name in 'POWERSTUB_CONFIG_DIR', 'PSTB_MATRIX') {
+        foreach ($name in 'POWERSTUB_CONFIG_DIR', 'PSTB_MATRIX', 'POWERSTUB_NO_UPDATE_CHECK') {
             $script:OriginalEnvironment[$name] = @{
                 Exists = Test-Path "Env:$name"
                 Value = [Environment]::GetEnvironmentVariable($name)
@@ -78,6 +78,7 @@ Describe "Parsing matrix" -Tag 'ParsingMatrix' -ForEach @{
         # Point the module at a throwaway config dir so the tests never touch the real config
         $script:TestConfigDir = Join-Path ([System.IO.Path]::GetTempPath()) "PSTBTestConfig_$([guid]::NewGuid())"
         $env:POWERSTUB_CONFIG_DIR = $script:TestConfigDir
+        $env:POWERSTUB_NO_UPDATE_CHECK = '1'  # tests must not start background Git update checks
 
         Import-Module (Join-Path $PSScriptRoot '../PowerStub/PowerStub.psd1') -Force
 

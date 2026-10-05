@@ -2,6 +2,7 @@
 
 BeforeAll {
     $script:GitTestOriginalConfig = $env:POWERSTUB_CONFIG_DIR
+    $env:POWERSTUB_NO_UPDATE_CHECK = '1'  # tests must not start background Git update checks
     $script:GitTestOriginalTab = (Get-Command TabExpansion2).ScriptBlock
     $script:GitTestOriginalLocation = Get-Location
     $script:GitTestRoot = Join-Path ([IO.Path]::GetTempPath()) "PSTBGitSafety_$([guid]::NewGuid())"
@@ -77,6 +78,7 @@ BeforeAll {
 AfterAll {
     Remove-Module PowerStub -Force -ErrorAction SilentlyContinue
     $env:POWERSTUB_CONFIG_DIR = $script:GitTestOriginalConfig
+    Remove-Item Env:\POWERSTUB_NO_UPDATE_CHECK -ErrorAction SilentlyContinue
     Set-Location -LiteralPath $script:GitTestOriginalLocation.Path
     Set-Item function:global:TabExpansion2 $script:GitTestOriginalTab
     if (Test-Path -LiteralPath $script:GitTestRoot) {

@@ -15,6 +15,7 @@ Describe 'Execution status and target error semantics' {
         if ($existing) { Remove-Module -ModuleInfo $existing -Force }
 
         $script:OriginalConfigDir = $env:POWERSTUB_CONFIG_DIR
+        $env:POWERSTUB_NO_UPDATE_CHECK = '1'  # tests must not start background Git update checks
         $script:TestRoot = Join-Path ([IO.Path]::GetTempPath()) "PSTBStatus_$([guid]::NewGuid())"
         $env:POWERSTUB_CONFIG_DIR = Join-Path $script:TestRoot 'config'
         $script:ModulePath = (Resolve-Path (Join-Path $PSScriptRoot '../PowerStub/PowerStub.psm1')).Path
@@ -104,6 +105,7 @@ Describe 'Execution status and target error semantics' {
     AfterAll {
         Remove-Module -Name PowerStub -Force -ErrorAction SilentlyContinue
         $env:POWERSTUB_CONFIG_DIR = $script:OriginalConfigDir
+        Remove-Item Env:\POWERSTUB_NO_UPDATE_CHECK -ErrorAction SilentlyContinue
         if (Test-Path -LiteralPath $script:TestRoot) {
             Remove-Item -LiteralPath $script:TestRoot -Recurse -Force
         }
