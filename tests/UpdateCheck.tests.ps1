@@ -35,15 +35,16 @@ BeforeAll {
         $origin = Join-Path $script:UpdateRoot "$Name-origin.git"
         $other = Join-Path $script:UpdateRoot "$Name-other"
         $identity = @('-c', 'user.name=PowerStubTests', '-c', 'user.email=tests@example.invalid', '-c', 'commit.gpgSign=false')
-        Invoke-GitFixture init --bare --quiet $origin
+        # Name the branch everywhere: init.defaultBranch differs between machines (CI Git uses master).
+        Invoke-GitFixture init --bare --quiet --initial-branch=main $origin
         Invoke-GitFixture init --quiet --initial-branch=main $root
         Invoke-GitFixture -C $root add .
         Invoke-GitFixture -C $root @identity commit --quiet -m one
         Invoke-GitFixture -C $root remote add origin $origin
         Invoke-GitFixture -C $root push --quiet --set-upstream origin main
-        Invoke-GitFixture clone --quiet $origin $other
+        Invoke-GitFixture clone --quiet --branch main $origin $other
         Invoke-GitFixture -C $other @identity commit --allow-empty --quiet -m two
-        Invoke-GitFixture -C $other push --quiet
+        Invoke-GitFixture -C $other push --quiet origin main
         return $root
     }
 
