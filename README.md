@@ -226,6 +226,11 @@ Proxy failure status is covered by tests for `$?`, `&&`, `||`, and `$LASTEXITCOD
 Direct aliases without arguments show the same command table. Commands without help
 headers show `-` for their synopsis; executables use their metadata file's synopsis.
 
+Running a command prints nothing of its own, so commands called in loops stay quiet. To
+see which file a call runs, use verbose mode: `-Verbose` on the call (it is still passed to
+the command too), or `$VerbosePreference = 'Continue'` for the session. PowerStub then
+writes `VERBOSE: Invoking <command file>`.
+
 ### Built-in Commands
 
 These virtual commands work across all stubs without needing script files:

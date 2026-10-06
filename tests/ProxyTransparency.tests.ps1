@@ -549,3 +549,63 @@ Describe "Nested stub commands" {
         (Get-PowerStubs).Keys | Should -Contain 'Nested'
     }
 }
+
+# "Invoking <path>" is verbose-only: commands called in loops must not print a line each time.
+Describe "Invoking line" {
+    BeforeAll {
+        $script:InvokingRoot = Join-Path ([IO.Path]::GetTempPath()) "PSTBInvoking_$([guid]::NewGuid())"
+        $commands = Join-Path $script:InvokingRoot 'Commands'
+        [IO.Directory]::CreateDirectory($commands) | Out-Null
+        [IO.File]::WriteAllText((Join-Path $commands 'talk.ps1'), "[CmdletBinding()] param([switch]`$Flag)`nWrite-Verbose 'target-verbose'`n`"talk:`$Flag`"")
+        New-PowerStub -Name 'Invoking' -Path $script:InvokingRoot -Force | Out-Null
+        New-PowerStubDirectAlias -AliasName 'pstbinvoking' -Stub 'Invoking' | Out-Null
+        $script:TalkPath = Join-Path $commands 'talk.ps1'
+    }
+
+    AfterAll {
+        Remove-PowerStubDirectAlias -AliasName 'pstbinvoking' -ErrorAction SilentlyContinue | Out-Null
+        Remove-PowerStub 'Invoking' | Out-Null
+        Remove-Item -LiteralPath $script:InvokingRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    It "Prints nothing extra by default through <Entry>" -ForEach @(
+        @{ Entry = 'pstb'; Call = { pstb Invoking talk *>&1 } },
+        @{ Entry = 'a direct alias'; Call = { pstbinvoking talk *>&1 } }
+    ) {
+        $records = @(& $Call)
+        $records | ForEach-Object { "$_" } | Should -Be @('talk:False')
+    }
+
+    It "Shows the line, and still passes -Verbose to the target, with <Form>" -ForEach @(
+        @{ Form = '-Verbose'; Call = { pstb Invoking talk -Verbose 4>&1 } },
+        @{ Form = '-Verbose:$true'; Call = { pstb Invoking talk -Verbose:$true 4>&1 } },
+        @{ Form = '-Verbose on a direct alias'; Call = { pstbinvoking talk -Verbose 4>&1 } }
+    ) {
+        $records = @(& $Call)
+        $verbose = @($records | Where-Object { $_ -is [System.Management.Automation.VerboseRecord] } | ForEach-Object { "$_" })
+        $verbose | Should -Contain "Invoking $($script:TalkPath)"
+        $verbose | Should -Contain 'target-verbose'
+        $records | Where-Object { $_ -is [string] } | Should -Be @('talk:False')
+    }
+
+    It "Stays quiet with -Verbose:`$false" {
+        $records = @(pstb Invoking talk -Verbose:$false 4>&1)
+        @($records | Where-Object { $_ -is [System.Management.Automation.VerboseRecord] }) | Should -BeNullOrEmpty
+    }
+
+    It "Shows the line when the session's VerbosePreference is Continue" {
+        $saved = $global:VerbosePreference
+        try {
+            $global:VerbosePreference = 'Continue'
+            $verbose = @(pstb Invoking talk 4>&1 | Where-Object { $_ -is [System.Management.Automation.VerboseRecord] } | ForEach-Object { "$_" })
+        }
+        finally {
+            $global:VerbosePreference = $saved
+        }
+        $verbose | Should -Contain "Invoking $($script:TalkPath)"
+    }
+
+    It "Leaves the output, warning, verbose and information streams identical to a direct call" {
+        @(pstb Invoking talk -Flag 6>&1 3>&1 4>&1) | ForEach-Object { "$_" } | Should -Be @(& $script:TalkPath -Flag 6>&1 3>&1 4>&1 | ForEach-Object { "$_" })
+    }
+}

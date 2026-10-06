@@ -146,7 +146,15 @@ function Invoke-PowerStubCommand {
     Write-Debug "Command path: $cmd"
     Write-Debug "Target args: $($targetArgs -join ', ')"
 
-    Write-Host "Invoking $cmd"
+    # Verbose only, so commands called in loops stay quiet: shown when $VerbosePreference
+    # asks for it, or when -Verbose is among the arguments (which still reach the target).
+    $verboseRequested = $VerbosePreference -ne 'SilentlyContinue'
+    for ($i = 0; $i -lt $targetArgs.Count; $i++) {
+        if ($targetArgs[$i] -isnot [string]) { continue }
+        if ($targetArgs[$i] -ieq '-Verbose') { $verboseRequested = $true }
+        elseif ($targetArgs[$i] -ieq '-Verbose:' -and ($i + 1) -lt $targetArgs.Count) { $verboseRequested = [bool]$targetArgs[$i + 1] }
+    }
+    Write-Verbose "Invoking $cmd" -Verbose:$verboseRequested
     # Propagate target failure through this simple-function boundary without rebinding
     # any of the target's arguments as PowerShell common parameters.
     $pipeline = { Invoke-CheckedCommand $cmd @targetArgs }.GetSteppablePipeline($MyInvocation.CommandOrigin)

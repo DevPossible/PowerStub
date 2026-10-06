@@ -239,11 +239,10 @@ Describe 'Execution status and target error semantics' {
             if ($Entry -eq 'pstb') { $invokeArgs = @('StatusStub', 'streams') }
             $proxied = @(& $Entry @invokeArgs *>&1)
             $direct.Count | Should -Be 7
-            $proxied.Count | Should -Be 8
-            # PowerStub's existing invocation banner is the only extra record.
-            "$($proxied[0])" | Should -BeLike 'Invoking *streams.ps1'
+            # The "Invoking <path>" line is verbose-only, so the proxy adds no records.
+            $proxied.Count | Should -Be 7
             $directRecords = @($direct | ForEach-Object { "$($_.GetType().FullName):$_" })
-            $proxyRecords = @($proxied[1..7] | ForEach-Object { "$($_.GetType().FullName):$_" })
+            $proxyRecords = @($proxied | ForEach-Object { "$($_.GetType().FullName):$_" })
             $proxyRecords | Should -Be $directRecords
         }
     }
