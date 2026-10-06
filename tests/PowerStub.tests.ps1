@@ -58,6 +58,8 @@ Describe "PowerStub Module" {
                 'New-PowerStub'
                 'New-PowerStubDirectAlias'
                 'Remove-PowerStubDirectAlias'
+                'Add-PowerStubToProfile'
+                'Remove-PowerStubFromProfile'
                 'Remove-PowerStub'
                 'Get-PowerStubs'
                 'Get-PowerStubCommand'

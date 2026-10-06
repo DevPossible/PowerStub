@@ -55,8 +55,8 @@ Install-Module -Name PowerStub -Scope CurrentUser
 # Import the module
 Import-Module PowerStub
 
-# Add to your PowerShell profile for persistent use
-Add-Content $PROFILE "`nImport-Module PowerStub"
+# Load PowerStub in every new session
+Add-PowerStubToProfile
 ```
 
 ### Option 2: From a GitHub Source Archive
@@ -89,23 +89,22 @@ Use the manifest for ordinary imports so the PowerShell requirement and public e
 
 ### Making PowerStub Available in Every Session
 
-After installing the module, you need to add it to your PowerShell profile so it loads automatically. If you haven't already done so during installation:
+Import PowerStub once, then let it add itself to your PowerShell profile:
 
 ```powershell
-# Add PowerStub to your profile (PSGallery install)
-Add-Content -Path $PROFILE -Value "`nImport-Module PowerStub"
-
-# Or for a custom path (GitHub/Source install)
-Add-Content -Path $PROFILE -Value "`nImport-Module 'C:\path\to\PowerStub\PowerStub.psd1'"
+Import-Module PowerStub        # or Import-Module 'C:\path\to\PowerStub\PowerStub.psd1'
+Add-PowerStubToProfile
 ```
 
-Then reload your profile to apply the changes without restarting PowerShell:
+`Add-PowerStubToProfile` writes to `$PROFILE.CurrentUserAllHosts`, the profile every host (console, Windows Terminal, VS Code) runs for you. Pass `-Path $PROFILE` to change only the current host's profile, and `-WhatIf` to see the change first. It:
 
-```powershell
-. $PROFILE
-```
+- Creates the profile file, and its folder, when they do not exist yet.
+- Adds `Import-Module PowerStub` for a PowerShell Gallery install, or an import of the exact manifest path for a source or archive install.
+- Does nothing when the profile already imports PowerStub, so running it again is safe.
+- Changes nothing when the profile already has syntax errors, or when the new line would not parse as a statement of its own (for example after a trailing line-continuation backtick).
+- Keeps the file's encoding and writes through a symbolic link, so a profile kept in a dotfiles repository stays a link.
 
-Verify the module is loaded and the `pstb` alias is available:
+New sessions load PowerStub from then on. Verify in a new session that the `pstb` alias is available:
 
 ```powershell
 pstb
@@ -113,11 +112,7 @@ pstb
 
 You should see the PowerStub overview with any registered stubs and built-in commands.
 
-> **Note:** If `$PROFILE` doesn't exist yet, create it first with:
->
-> ```powershell
-> New-Item -Path $PROFILE -ItemType File -Force
-> ```
+To stop loading PowerStub in new sessions, run `Remove-PowerStubFromProfile` (with the same `-Path`, if you passed one). It removes the lines that import PowerStub, including ones you added by hand, and the `# PowerStub` comment `Add-PowerStubToProfile` writes above its line. An import that shares a line with other code is left in place with a warning.
 
 ## Quick Start
 
@@ -361,6 +356,8 @@ Limits:
 
 | Command | Description |
 |---------|-------------|
+| `Add-PowerStubToProfile` | Load PowerStub in every new session |
+| `Remove-PowerStubFromProfile` | Stop loading PowerStub in new sessions |
 | `Get-PowerStubConfiguration` | View current configuration |
 | `Import-PowerStubConfiguration` | Reload configuration from file |
 | `Import-PowerStubConfiguration -Reset` | Reset to defaults |

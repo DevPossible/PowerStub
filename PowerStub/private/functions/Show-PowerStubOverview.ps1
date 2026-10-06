@@ -27,6 +27,7 @@ function Show-PowerStubOverview {
         [PSCustomObject]@{ Command = "New-PowerStubDirectAlias"; Synopsis = "Create a shortcut alias for a stub" }
         [PSCustomObject]@{ Command = "Remove-PowerStubDirectAlias"; Synopsis = "Remove a direct alias" }
         [PSCustomObject]@{ Command = "Set-PowerStubCommandVisibility"; Synopsis = "Change command lifecycle (alpha/beta/prod)" }
+        [PSCustomObject]@{ Command = "Add-PowerStubToProfile"; Synopsis = "Load PowerStub in every new session" }
         [PSCustomObject]@{ Command = "Get-PowerStubConfiguration"; Synopsis = "View current configuration" }
         [PSCustomObject]@{ Command = "Enable-PowerStubAlphaCommands"; Synopsis = "Show alpha.* prefixed commands" }
         [PSCustomObject]@{ Command = "Enable-PowerStubBetaCommands"; Synopsis = "Show beta.* prefixed commands" }

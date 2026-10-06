@@ -11,6 +11,7 @@
     PowerShellVersion = '7.0'
 
     FunctionsToExport = @(
+        'Add-PowerStubToProfile',
         'Disable-PowerStubAlphaCommands',
         'Disable-PowerStubBetaCommands',
         'Enable-PowerStubAlphaCommands',
@@ -25,6 +26,7 @@
         'New-PowerStubDirectAlias',
         'Remove-PowerStub',
         'Remove-PowerStubDirectAlias',
+        'Remove-PowerStubFromProfile',
         'Search-PowerStubCommands',
         'Set-PowerStubCommandVisibility'
     )

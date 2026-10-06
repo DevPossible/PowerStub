@@ -44,6 +44,8 @@ PowerStub/                        # Repository root
 | `Get-PowerStubCommandHelp.ps1` | Help | Displays help for a stub command |
 | `Search-PowerStubCommands.ps1` | Search | Searches commands across all stubs |
 | `New-PowerStubDirectAlias.ps1` | Alias creation | Creates shortcut alias for a stub |
+| `Add-PowerStubToProfile.ps1` | Setup | Adds the PowerStub import to a profile (creates the file; idempotent; refuses unparseable profiles) |
+| `Remove-PowerStubFromProfile.ps1` | Setup | Removes PowerStub imports from a profile |
 | `Remove-PowerStubDirectAlias.ps1` | Alias removal | Removes a direct alias |
 | `Set-PowerStubCommandVisibility.ps1` | Lifecycle | Changes command visibility (alpha/beta/production) |
 | `Get-PowerStubConfiguration.ps1` | Config read | Returns current configuration |
@@ -77,6 +79,7 @@ PowerStub/                        # Repository root
 | `Enter-PowerStubConfigurationLock.ps1` | Config | Acquires the cross-process config mutex |
 | `Exit-PowerStubConfigurationLock.ps1` | Config | Releases the config mutex |
 | `Test-PowerStubReservedName.ps1` | Utility | Names that aliases must never shadow (git, cd, ...) |
+| `Read-PowerStubProfile.ps1` | Setup | Reads a profile: text, encoding, AST, parse errors, PowerStub imports |
 | `Get-PowerStubCommandMetadata.ps1` | Display | Reads metadata for executable commands |
 | `Show-PowerStubCommands.ps1` | Display | Lists the commands in a stub |
 | `Invoke-PowerStubUpdateCheck.ps1` | Git | Per-command "not the latest version" notice; starts background checks when due |
