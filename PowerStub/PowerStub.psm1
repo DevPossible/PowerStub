@@ -210,6 +210,10 @@ if ($directAliases) {
     }
 }
 
+# Start-PowerStubJob / Start-PstbJob: Start-Job with PowerStub loaded in the job
+Write-Verbose "Registering Start-PowerStubJob"
+Register-PowerStubJobCommand
+
 # NOTE: Git status checks are NOT performed on module load for performance. Running a
 # command checks its stub in the background at most every UpdateCheckIntervalHours
 # (Invoke-PowerStubUpdateCheck); 'pstb update --check' checks immediately.
@@ -227,6 +231,7 @@ $MyInvocation.MyCommand.ScriptBlock.Module.OnRemove = {
     foreach ($aliasName in @($Script:RegisteredDirectAliases)) {
         Unregister-PowerStubDirectAliasFunction $aliasName -ErrorAction SilentlyContinue
     }
+    Unregister-PowerStubJobCommand
 }
 
 Write-Verbose "PowerStub module loaded."

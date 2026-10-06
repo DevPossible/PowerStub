@@ -86,6 +86,8 @@ PowerStub/                        # Repository root
 | `Write-PowerStubUpdateCheckState.ps1` | Git | Writes a state file in one step (also used by the background script) |
 | `Clear-PowerStubUpdateCheckState.ps1` | Git | Forgets a repository's results after `pstb update` |
 | `Test-PowerStubInteractiveSession.ps1` | Utility | False in CI or `-NonInteractive` sessions |
+| `Register-PowerStubJobCommand.ps1` | Jobs | Creates the global `Start-PowerStubJob` function and `Start-PstbJob` alias at import |
+| `Unregister-PowerStubJobCommand.ps1` | Jobs | Removes them on module removal, only if PowerStub created them |
 
 ## Architecture Patterns
 
@@ -98,6 +100,7 @@ PowerStub/                        # Repository root
 5. Creates `pstb` alias for `Invoke-PowerStubCommand`
 6. Wraps `TabExpansion2` to complete stubs, commands, and target parameters
 7. Re-registers saved direct aliases from configuration
+8. Creates the global `Start-PowerStubJob` function and `Start-PstbJob` alias (see Background Jobs)
 
 ### Virtual Verbs
 
@@ -161,6 +164,17 @@ dv deploy  # Same as: pstb DevOps deploy
 - `RegisteredDirectAliasFunctions` records the exact generated ScriptBlock; cleanup and completion must check ownership, not just a registered name
 - Configured main `InvokeAlias` collisions warn and fall back to a free `pstb`, or leave only the full command name available; importing must not rewrite config
 - Support full tab completion for commands and parameters
+
+### Background Jobs (Start-PowerStubJob)
+
+`Start-Job` runs its script block in a new process without the user's profile, so neither `pstb` nor direct aliases exist there (aliases are functions created at import, and nothing can auto-load PowerStub from their names). `Start-PowerStubJob` (alias `Start-PstbJob`) is `Start-Job` with an initialization script that sets `POWERSTUB_NO_UPDATE_CHECK=1` and imports this exact module by manifest path, then dot-sources the caller's own `-InitializationScript`, if any. Rules:
+
+- It is a **global function created at import** by `Register-PowerStubJobCommand`, from an unbound `[scriptblock]::Create` text. It must NOT be an exported module function: a module function runs in the module's session state, and `Start-Job` resolves `$using:` from the session state it is called in, so `$using:` of a caller's local variable failed. It is therefore not in `FunctionsToExport` or `public/functions`
+- Its body cannot use module state (it runs in the caller's session state). The manifest path is written into the generated text, with single quotes doubled at both levels
+- Its `[CmdletBinding()]` and `param()` come from `ProxyCommand` over `Start-Job`'s `CommandMetadata`, so parameters always match the running PowerShell; the body steps `Microsoft.PowerShell.Core\Start-Job` with `@PSBoundParameters`
+- `-PSVersion` below 7 throws (PowerStub cannot load in Windows PowerShell); the `DefinitionName` parameter set gets no initialization script
+- Never replaces an existing `Start-PowerStubJob`/`Start-PstbJob` (warns); `Unregister-PowerStubJobCommand` removes only the exact script block / alias it created
+- Tests: `tests/StartPowerStubJob.tests.ps1` starts real jobs. Collect jobs before waiting on them: waiting inside the same pipeline deadlocks a job that reads pipeline input (as with `Start-Job`)
 
 ### Argument Pass-Through (read this before touching parsing)
 
@@ -417,6 +431,9 @@ Tests use Pester framework (`tests/*.tests.ps1`). Every test file sets `POWERSTU
 - Dynamic parameters and tab completion (using TabExpansion2)
 - Smart parameter filtering (filters already-bound positional params)
 - Direct aliases (create, remove, persistence, tab completion)
+- Background jobs (`Start-PowerStubJob`: pstb/aliases in jobs, `$using:`, pipeline input, init scripts, import/removal)
+- Nested stub commands (a target that calls `pstb` or a direct alias)
+- Background update checks (`tests/UpdateCheck.tests.ps1`)
 - Virtual verbs (search, help commands)
 - Command visibility changes (alpha/beta/production lifecycle)
 - Private function unit tests (ConvertTo-Hashtable, Get-PowerStubPath, etc.)

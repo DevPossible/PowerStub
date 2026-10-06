@@ -37,6 +37,7 @@ pstb DevOps deploy-app -Environment prod
 - **Zero PATH Pollution**: Single alias (`pstb`) provides access to all your tools
 - **Built-in Commands**: Search across stubs and get help for any command
 - **Direct Aliases**: Create shortcut aliases for frequently used stubs
+- **Background Jobs**: `Start-PowerStubJob` (alias `Start-PstbJob`) starts a `Start-Job` job in which `pstb` and your direct aliases work
 - **Git Integration**: Detect Git-based stub repositories, get notified in the background when one is behind, and check or pull updates
 
 ## Installation
@@ -291,6 +292,65 @@ Remove-PowerStubDirectAlias -AliasName "dv"
 ```
 
 Direct aliases are persisted and automatically restored when the module loads.
+
+### Background Jobs
+
+A background job started with `Start-Job` runs in a new PowerShell process that does not
+load your profile. PowerStub is not imported there, so `pstb` fails, and so do your direct
+aliases: they are functions PowerStub creates when it is imported, and PowerShell cannot
+auto-load a module from their names.
+
+```text
+ObjectNotFound: The term 'rdeploy' is not recognized as a name of a cmdlet, function, script file, or executable program.
+```
+
+Use `Start-PowerStubJob` (alias `Start-PstbJob`) instead of `Start-Job`:
+
+| Command | Alias | Description |
+|---------|-------|-------------|
+| `Start-PowerStubJob <Start-Job parameters>` | `Start-PstbJob` | `Start-Job`, with PowerStub imported in the job before its script block runs |
+
+```powershell
+# One job per URL, each calling a direct alias
+$jobs = foreach ($url in $urls) {
+    Start-PowerStubJob { param($u) rdeploy Test-BasicUrl $u -quiet -details } -ArgumentList $url
+}
+$results = $jobs | Receive-Job -Wait -AutoRemoveJob
+
+# $using:, pipeline input, -Name, -FilePath and the rest of Start-Job work as usual
+$environment = 'UAT'
+Start-PstbJob { pstb DevOps Test-EnvHealth -environment $using:environment } -Name health
+```
+
+How it works:
+
+- It takes exactly the same parameters as `Start-Job`. They are generated from `Start-Job`
+  in your PowerShell version, so new `Start-Job` parameters appear automatically.
+- Before the job's script block runs, it imports **the same PowerStub module your session is
+  using**, by path, so a job never loads a different installed version. The job reads the
+  same `config.json`, so stubs, direct aliases and alpha/beta settings match your session.
+  `POWERSTUB_CONFIG_DIR` is inherited by the job.
+- `pstb`, `Invoke-PowerStubCommand`, direct aliases and stub commands that call other stub
+  commands all work inside the job. Exit codes and `$?` behave as they do outside a job.
+- If you pass `-InitializationScript`, it still runs, after PowerStub is imported, so it
+  can use stub commands too. Functions it defines are available to the job, as with `Start-Job`.
+- `$using:` works for any variable the caller can see, including variables local to a
+  function or script. This is why `Start-PowerStubJob` runs in your scope rather than
+  inside the module: it is a global function PowerStub creates at import, like a direct
+  alias, not an exported module function. It is available once the module is imported.
+- The background [update check](#automatic-update-notices) is turned off inside jobs.
+- It works from inside a stub command, for example a health-check script that fans out
+  to one job per service.
+
+Limits:
+
+- Windows PowerShell jobs (`-PSVersion 5.1`) are refused with an error: PowerStub needs PowerShell 7.
+- `Start-ThreadJob` and `ForEach-Object -Parallel` also start without your session's
+  functions. They have no initialization hook, so import the module in the script block:
+  `ForEach-Object -Parallel { Import-Module PowerStub; rdeploy ... }`.
+- Like direct aliases, an existing command named `Start-PowerStubJob` or `Start-PstbJob` is
+  never replaced; PowerStub warns at import instead. Removing the module removes only the
+  function and alias it created.
 
 ### Configuration Commands
 
