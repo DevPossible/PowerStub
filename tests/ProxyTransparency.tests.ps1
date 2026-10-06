@@ -505,3 +505,47 @@ Describe "Arguments the proxy used to lose" {
         $proxied | Should -Contain 'ARG[0]:String:-Verbose'
     }
 }
+
+# A target that runs another stub command (rdev start-shell calling rdev ...). Targets used to
+# run in the module's session state, and while a script file runs PowerShell points that
+# session state's $script: scope at the script, so the nested call found no PowerStub state.
+Describe "Nested stub commands" {
+    BeforeAll {
+        $script:NestedRoot = Join-Path ([IO.Path]::GetTempPath()) "PSTBNested_$([guid]::NewGuid())"
+        $commands = Join-Path $script:NestedRoot 'Commands'
+        [IO.Directory]::CreateDirectory($commands) | Out-Null
+        [IO.File]::WriteAllText((Join-Path $commands 'inner.ps1'), "param([string]`$Name = 'none')`n`"inner:`$Name`"")
+        [IO.File]::WriteAllText((Join-Path $commands 'outer-pstb.ps1'), "pstb Nested inner -Name viapstb")
+        [IO.File]::WriteAllText((Join-Path $commands 'outer-alias.ps1'), "pstbnested inner -Name viaalias")
+        [IO.File]::WriteAllText((Join-Path $commands 'outer-fail.ps1'), "pstb Nested inner`nexit 3")
+        New-PowerStub -Name 'Nested' -Path $script:NestedRoot -Force | Out-Null
+        New-PowerStubDirectAlias -AliasName 'pstbnested' -Stub 'Nested' | Out-Null
+    }
+
+    AfterAll {
+        Remove-PowerStubDirectAlias -AliasName 'pstbnested' -ErrorAction SilentlyContinue | Out-Null
+        Remove-PowerStub 'Nested' | Out-Null
+        Remove-Item -LiteralPath $script:NestedRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    It "Runs a stub command from inside a stub command through <Entry>" -ForEach @(
+        @{ Entry = 'pstb'; Outer = 'outer-pstb'; Expected = 'inner:viapstb' },
+        @{ Entry = 'a direct alias'; Outer = 'outer-alias'; Expected = 'inner:viaalias' }
+    ) {
+        pstb Nested $Outer 6>$null | Should -Be $Expected
+        pstbnested $Outer 6>$null | Should -Be $Expected
+    }
+
+    It "Keeps the outer command's exit status after a nested call" {
+        $output = pstb Nested outer-fail 6>$null
+        $succeeded = $?
+        $output | Should -Be 'inner:none'
+        $succeeded | Should -BeFalse
+        $LASTEXITCODE | Should -Be 3
+    }
+
+    It "Leaves the module's state intact while a target runs" {
+        InModuleScope PowerStub { $null -ne $Script:PSTBSettings } | Should -BeTrue
+        (Get-PowerStubs).Keys | Should -Contain 'Nested'
+    }
+}

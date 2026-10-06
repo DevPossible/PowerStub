@@ -74,7 +74,11 @@ function Invoke-CheckedCommand {
     # Link the target pipeline to this function's command runtime. A plain call resets
     # the caller's $? to success when a simple function returns, even after exit 7.
     # Keep the argument splats intact: advanced-function binding would consume CLI flags.
-    $pipeline = { & $command @switchValues @targetArgs }.GetSteppablePipeline($MyInvocation.CommandOrigin)
+    # The target itself runs in a separate session state (see PowerStub.psm1), never in
+    # this module's: while a script file runs, PowerShell points its session state's
+    # $script: scope at that script, which hid all of PowerStub's state from any pstb
+    # call the target made.
+    $pipeline = { & $Script:InvokeTarget $command $switchValues $targetArgs }.GetSteppablePipeline($MyInvocation.CommandOrigin)
     try {
         $pipeline.Begin($false, $ExecutionContext)
         $pipeline.Process()

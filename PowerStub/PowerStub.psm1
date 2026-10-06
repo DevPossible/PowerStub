@@ -26,6 +26,24 @@ if ($IsCoreCLR) {
 Write-Verbose 'Dot-sourcing functions'
 ($publicFn + $privateFn) | ForEach-Object -Process { Write-Verbose $_.FullName; . $_.FullName }
 
+# Target commands run in a separate, empty session state, never in the module's own
+# (see Invoke-CheckedCommand). Invoking this bound script block switches to that session
+# state. The arrays travel as arguments, unchanged, so their parameter-name markers survive.
+# Like every simple-function boundary here, it steps the target so failure status reaches
+# its caller; the pipeline must be built and stepped inside this session state.
+$Script:InvokeTarget = (New-Module -Name 'PowerStub.Target' -ScriptBlock { }).NewBoundScriptBlock({
+    param($Target, $SwitchValues, $TargetArgs)
+    $pipeline = { & $Target @SwitchValues @TargetArgs }.GetSteppablePipeline($MyInvocation.CommandOrigin)
+    try {
+        $pipeline.Begin($false, $ExecutionContext)
+        $pipeline.Process()
+        $pipeline.End()
+    }
+    finally {
+        $pipeline.Dispose()
+    }
+})
+
 #load the configuration
 $Script:PSTBSettings = Get-PowerStubConfigurationDefaults
 Import-PowerStubConfiguration
