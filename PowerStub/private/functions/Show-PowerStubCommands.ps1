@@ -71,13 +71,10 @@ function Show-PowerStubCommands {
                 }
             }
             else {
-                # For .ps1 files, get help directly
-                $help = Get-Help (Get-PowerStubFilePattern -Path $cmd.FullName) -ErrorAction SilentlyContinue
-                if ($help -and $help -isnot [string] -and $help.Synopsis) {
+                # For .ps1 files, read the help block from the file (Get-Help is far slower)
+                $help = Get-PowerStubScriptHelp -Path $cmd.FullName
+                if ($help -and $help.Synopsis) {
                     $synopsis = $help.Synopsis.Trim()
-                    if ($synopsis -eq $cmd.FullName -or $synopsis -eq $cmd.Name) {
-                        $synopsis = $null
-                    }
                 }
             }
 

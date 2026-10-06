@@ -64,12 +64,10 @@ function Search-PowerStubCommands {
             $helpMatch = $false
 
             try {
-                $help = Get-Help (Get-PowerStubFilePattern -Path $cmd.FullName) -ErrorAction SilentlyContinue
+                $help = Get-PowerStubScriptHelp -Path $cmd.FullName
                 if ($help) {
                     $synopsis = if ($help.Synopsis) { $help.Synopsis.Trim() } else { $null }
-                    $description = if ($help.Description) {
-                        ($help.Description | ForEach-Object { $_.Text }) -join ' '
-                    } else { $null }
+                    $description = if ($help.Description) { $help.Description.Trim() } else { $null }
 
                     # Check if help text matches
                     if ($synopsis -and $synopsis -like "*$Query*") {

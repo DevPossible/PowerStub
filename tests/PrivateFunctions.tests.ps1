@@ -798,3 +798,62 @@ Describe "Set-PowerStubCommandVisibility - WhatIf support" {
         }
     }
 }
+
+# ---------------------------------------------------------------------------
+# Command help lookup: listings and search read help from the file, never Get-Help
+# (a wildcard Get-Help searches every command and help topic: ~350 ms per command)
+# ---------------------------------------------------------------------------
+Describe "Command help lookup" {
+    BeforeAll {
+        $script:HelpStubRoot = Join-Path ([IO.Path]::GetTempPath()) "PSTBHelpLookup_$([guid]::NewGuid())"
+        $commands = Join-Path $script:HelpStubRoot 'Commands'
+        [IO.Directory]::CreateDirectory($commands) | Out-Null
+        [IO.File]::WriteAllText((Join-Path $commands 'documented.ps1'), @'
+<#
+.SYNOPSIS
+    Documented synopsis text.
+.DESCRIPTION
+    Rotates the zebrafish certificates.
+#>
+param([string]$Name)
+'documented'
+'@)
+        [IO.File]::WriteAllText((Join-Path $commands 'undocumented.ps1'), "param([string]`$Environment, [switch]`$AsJson)`n'undocumented'")
+        [IO.File]::WriteAllText((Join-Path $commands 'odd[1].ps1'), "<#`n.SYNOPSIS`n    Bracket synopsis text.`n#>`nparam()`n'odd'")
+        New-PowerStub -Name 'HelpLookup' -Path $script:HelpStubRoot -Force | Out-Null
+    }
+
+    AfterAll {
+        Remove-PowerStub 'HelpLookup' | Out-Null
+        Remove-Item -LiteralPath $script:HelpStubRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    It "Lists synopses from the file, with '-' for a script without help" {
+        Mock Get-Help { throw 'Get-Help must not be used for listings' } -ModuleName PowerStub
+        $listing = (InModuleScope PowerStub { Show-PowerStubCommands 'HelpLookup' } 6>&1 | Out-String)
+        $listing | Should -Match 'documented\s+Documented synopsis text\.'
+        $listing | Should -Match 'odd\[1\]\s+Bracket synopsis text\.'
+        $listing | Should -Match 'undocumented\s+-'
+        $listing | Should -Not -Match 'Environment'
+        Should -Invoke Get-Help -ModuleName PowerStub -Times 0 -Exactly
+    }
+
+    It "Searches synopsis and description from the file" {
+        Mock Get-Help { throw 'Get-Help must not be used for search' } -ModuleName PowerStub
+        $results = @(Search-PowerStubCommands 'zebrafish')
+        $results.Command | Should -Be @('documented')
+        $results[0].Synopsis | Should -Be 'Documented synopsis text.'
+        Should -Invoke Get-Help -ModuleName PowerStub -Times 0 -Exactly
+    }
+
+    It "Uses a plain path for Get-Help unless the path needs escaping" {
+        InModuleScope PowerStub {
+            $plain = Join-Path ([IO.Path]::GetTempPath()) 'tools/deploy.ps1'
+            Get-PowerStubFilePattern -Path $plain | Should -BeExactly $plain
+            foreach ($leaf in 'odd[1].ps1', 'odd`1.ps1', 'odd*.ps1', 'odd?.ps1') {
+                $path = Join-Path ([IO.Path]::GetTempPath()) "tools/$leaf"
+                Get-PowerStubFilePattern -Path $path | Should -Not -BeExactly $path
+            }
+        }
+    }
+}
