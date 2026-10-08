@@ -798,15 +798,20 @@ throw 'Listing must not execute commands'
             $text.IndexOf('missing-help') | Should -BeLessThan $text.IndexOf('zulu')
         }
 
-        It "Should keep prerelease markers in the command column without changing name order" {
+        It "Should mark prerelease commands with a leading * and list them first" {
             Enable-PowerStubAlphaCommands
             Enable-PowerStubBetaCommands
 
             $text = ts 6>&1 | Out-String
             $text | Should -Match '(?m)^Command +Synopsis\r?\n------- +--------\r?$'
-            $text | Should -Match '(?m)^deploy \* +'
-            $text | Should -Match '(?m)^new-feature \* +'
-            $text.IndexOf('deploy *') | Should -BeLessThan $text.IndexOf('new-feature *')
+            $text | Should -Match '(?m)^\* deploy +'
+            $text | Should -Match '(?m)^\* new-feature +'
+            $text | Should -Match '(?m)^\* remove-data +'
+            $text | Should -Not -Match '(?m)^\S+ \*'
+            # Prerelease commands sort by name ahead of every production command
+            $text.IndexOf('* deploy') | Should -BeLessThan $text.IndexOf('* new-feature')
+            $text.IndexOf('* new-feature') | Should -BeLessThan $text.IndexOf('* remove-data')
+            $text.IndexOf('* remove-data') | Should -BeLessThan $text.IndexOf('arg-dump')
             $text | Should -Not -Match '(?m)^- -------'
         }
 

@@ -7,7 +7,7 @@
     - Stub root path
     - Command name (with prefix stripped)
     - Synopsis from comment-based help (or metadata file for executables)
-    - Visibility indicator (* for alpha/beta commands)
+    - Visibility indicator (* before alpha/beta commands, which are listed first)
 #>
 
 function Show-PowerStubCommands {
@@ -98,8 +98,8 @@ function Show-PowerStubCommands {
         }
     }
 
-    # Sort by command name and display
-    $displayList = $displayList | Sort-Object Command
+    # Pre-release (alpha/beta) commands first, then by command name
+    $displayList = $displayList | Sort-Object @{ Expression = { -not $_.Prefix } }, Command
 
     Write-Host ""
     Write-Host "Commands in '$Stub':" -ForegroundColor Cyan
@@ -118,7 +118,7 @@ function Show-PowerStubCommands {
     $displayList | Format-Table -Property @{
         Label = 'Command'
         Expression = {
-            if ($_.Prefix) { "$($_.Command) $($_.Prefix)" } else { $_.Command }
+            if ($_.Prefix) { "$($_.Prefix) $($_.Command)" } else { $_.Command }
         }
     }, Synopsis -AutoSize | Out-String | ForEach-Object { $_.Trim() } | Write-Host
     Write-Host ""
