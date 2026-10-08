@@ -6,8 +6,8 @@
   The state file, from Get-PowerStubUpdateCheckFile.
 
 .OUTPUTS
-  PSCustomObject with Path, LastCheckUtc (UTC DateTime), Status, RepoRoot and BehindCount,
-  or $null when there is no usable result. A missing or unreadable file just means the
+  PSCustomObject with Path, LastCheckUtc (UTC DateTime), Status, RepoRoot, BehindCount and
+  LatestVersion (release check only), or $null when there is no usable result. A missing or unreadable file just means the
   stub is due for a check.
 #>
 
@@ -41,6 +41,7 @@ function Read-PowerStubUpdateCheckState {
             Status       = $state.Status
             RepoRoot     = $state.RepoRoot
             BehindCount  = $behindCount
+            LatestVersion = $state.LatestVersion
         }
     }
     catch {

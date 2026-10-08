@@ -21,6 +21,9 @@
 
 .PARAMETER BehindCount
   Commits on the tracking branch that are not local, when known.
+
+.PARAMETER LatestVersion
+  The latest PowerStub release on the Gallery, for the release check.
 #>
 
 function Write-PowerStubUpdateCheckState {
@@ -37,7 +40,9 @@ function Write-PowerStubUpdateCheckState {
 
         [string]$RepoRoot,
 
-        [Nullable[int]]$BehindCount
+        [Nullable[int]]$BehindCount,
+
+        [string]$LatestVersion
     )
 
     [IO.Directory]::CreateDirectory((Split-Path -Parent $File)) | Out-Null
@@ -47,6 +52,7 @@ function Write-PowerStubUpdateCheckState {
         Status       = $Status
         RepoRoot     = if ($RepoRoot) { $RepoRoot } else { $null }
         BehindCount  = $BehindCount
+        LatestVersion = if ($LatestVersion) { $LatestVersion } else { $null }
     } | ConvertTo-Json
 
     $tempFile = "$File.$([guid]::NewGuid().ToString('N')).tmp"

@@ -142,6 +142,13 @@ function Invoke-PowerStubCommand {
     catch {
         Write-Debug "PowerStub update check skipped: $_"
     }
+    # Same for a newer PowerStub release on the Gallery, checked daily in the background.
+    try {
+        Invoke-PowerStubReleaseCheck -ErrorAction Stop
+    }
+    catch {
+        Write-Debug "PowerStub release check skipped: $_"
+    }
 
     Write-Debug "Command path: $cmd"
     Write-Debug "Target args: $($targetArgs -join ', ')"

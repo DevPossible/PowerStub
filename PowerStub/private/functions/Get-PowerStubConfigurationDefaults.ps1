@@ -41,6 +41,7 @@ function Get-PowerStubConfigurationDefaults {
         'EnablePrefix:Beta'  = $false
         'GitEnabled'         = $true
         'UpdateCheckIntervalHours' = 4
+        'ReleaseCheckIntervalHours' = 24
         'GitAvailable'       = $false
         'ConfigFileLastWriteUtc' = $null
     }

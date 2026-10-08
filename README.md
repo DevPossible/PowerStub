@@ -428,6 +428,7 @@ The persisted JSON looks like this (Git-backed stubs can instead store a `Path` 
 | `EnablePrefix:Beta` | Boolean | `false` | Include `beta.*` prefixed commands |
 | `GitEnabled` | Boolean | `true` | Allow Git integration when Git is installed; loaded when the module imports |
 | `UpdateCheckIntervalHours` | Number | `4` | How often running a command checks its stub's repository for updates in the background; `0` turns the check off |
+| `ReleaseCheckIntervalHours` | Number | `24` | How often running a command checks the PowerShell Gallery for a newer PowerStub release in the background; `0` turns the check off |
 
 ## Command Lifecycle
 
@@ -492,6 +493,16 @@ Checks are per stub, so stubs inside and outside Git repositories can be mixed. 
 - the session is not interactive: a CI job (`CI` or `TF_BUILD` is set) or `pwsh -NonInteractive`
 
 A fetch that fails, for example offline or when the remote needs credentials, shows nothing. The background check never prompts for credentials. Results are kept in an `update-check` folder next to `config.json`, never in `config.json` itself.
+
+### New PowerStub Releases
+
+Running a command also tells you when a newer PowerStub release is on the PowerShell Gallery:
+
+```text
+A newer version of PowerStub is available (2.4.0, you have 2.3.0). Run 'Update-Module PowerStub' to install it.
+```
+
+It works the same way as the repository check: the command only reads the last result, and when that result is older than `ReleaseCheckIntervalHours` (24 hours by default) the Gallery is asked again in a hidden background process. The notice is shown once per PowerShell session. Git is not needed. Only a copy installed from the Gallery is checked; a copy loaded from a clone of this repository is not. `ReleaseCheckIntervalHours` set to `0`, `POWERSTUB_NO_UPDATE_CHECK`, CI jobs and `-NonInteractive` sessions turn it off.
 
 ### Checking for Updates
 

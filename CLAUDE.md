@@ -88,6 +88,7 @@ PowerStub/                        # Repository root
 | `Read-PowerStubUpdateCheckState.ps1` | Git | Reads a state file; `$null` when missing or unreadable |
 | `Write-PowerStubUpdateCheckState.ps1` | Git | Writes a state file in one step (also used by the background script) |
 | `Clear-PowerStubUpdateCheckState.ps1` | Git | Forgets a repository's results after `pstb update` |
+| `Invoke-PowerStubReleaseCheck.ps1` | Git | Daily "newer version of PowerStub" notice for Gallery installs; starts background checks when due |
 | `Test-PowerStubInteractiveSession.ps1` | Utility | False in CI or `-NonInteractive` sessions |
 | `Register-PowerStubJobCommand.ps1` | Jobs | Creates the global `Start-PowerStubJob` function and `Start-PstbJob` alias at import |
 | `Unregister-PowerStubJobCommand.ps1` | Jobs | Removes them on module removal, only if PowerStub created them |
@@ -138,6 +139,9 @@ Import checks whether Git is installed but never fetches or checks remote status
 - A `<state>.lock` claim created with `CreateNew` allows one check per stub at a time; a claim older than 30 minutes is taken over
 - Off when Git is unavailable/disabled, `POWERSTUB_NO_UPDATE_CHECK` is set, or `Test-PowerStubInteractiveSession` is false (CI, TF_BUILD, `-NonInteractive`). Stubs outside a repo record `NotRepository` and cost one background check per interval
 - State is never stored in `config.json`. A successful `pstb update` clears every state file for that repo (`Clear-PowerStubUpdateCheckState`)
+
+**PowerStub release check (per command run):**
+`Invoke-PowerStubCommand` also calls `Invoke-PowerStubReleaseCheck` (own try/catch). Same pattern and helpers as the Git check: it reads `update-check/powerstub-release.json` (`LatestVersion`), compares it with the loaded module version, prints "A newer version of PowerStub is available ..." once per session, and when the result is older than `ReleaseCheckIntervalHours` (default 24, `0` = off) calls `Start-PowerStubUpdateCheck -ScriptName Update-PowerStubReleaseStatus.ps1`, which queries the Gallery's `FindPackagesById()` with `IsLatestVersion` (no prereleases). It needs no Git and runs only for gallery installs (`PSGetModuleInfo.xml` in the module folder): the source manifest version is a baseline, not a release. Same off switches otherwise.
 
 **Update command:**
 

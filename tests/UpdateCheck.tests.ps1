@@ -296,6 +296,133 @@ Describe 'Background check' -Skip:(-not (Get-Command git -ErrorAction SilentlyCo
     }
 }
 
+Describe 'Release check' {
+    BeforeAll {
+        # A copy installed from the Gallery carries PSGetModuleInfo.xml; the source folder does not.
+        $script:SourceModulePath = InModuleScope PowerStub { $Script:ModulePath }
+        $script:InstalledModulePath = Join-Path $script:UpdateRoot 'installed-module'
+        [IO.Directory]::CreateDirectory($script:InstalledModulePath) | Out-Null
+        [IO.File]::WriteAllText((Join-Path $script:InstalledModulePath 'PSGetModuleInfo.xml'), '<Objs />')
+        $script:ReleaseStateFile = Join-Path $env:POWERSTUB_CONFIG_DIR 'update-check/powerstub-release.json'
+        $script:ReleaseScript = Join-Path $PSScriptRoot '../PowerStub/private/scripts/Update-PowerStubReleaseStatus.ps1'
+        $script:InstalledVersion = (Get-Module PowerStub).Version
+
+        function Set-ReleaseState {
+            param([string]$LatestVersion, [string]$Status = 'Ready', [datetime]$LastCheckUtc = [datetime]::UtcNow)
+            [IO.Directory]::CreateDirectory((Split-Path -Parent $script:ReleaseStateFile)) | Out-Null
+            @{ Path = $script:InstalledModulePath; LastCheckUtc = $LastCheckUtc.ToString('o'); Status = $Status; LatestVersion = $LatestVersion } |
+                ConvertTo-Json | Set-Content -LiteralPath $script:ReleaseStateFile
+        }
+
+        function Get-ReleaseNotices {
+            param([object[]]$Records)
+            @($Records | Where-Object { $_ -is [Management.Automation.InformationRecord] -and "$_" -like 'A newer version of PowerStub*' } |
+                ForEach-Object { "$_" })
+        }
+    }
+
+    BeforeEach {
+        Reset-Session
+        Remove-Item Env:\POWERSTUB_NO_UPDATE_CHECK -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $script:ReleaseStateFile -Force -ErrorAction SilentlyContinue
+        InModuleScope PowerStub -Parameters @{ Path = $script:InstalledModulePath } {
+            $Script:ModulePath = $Path
+            Set-PowerStubConfigurationKey 'ReleaseCheckIntervalHours' 24
+        }
+        Mock Test-PowerStubInteractiveSession { $true } -ModuleName PowerStub
+        Mock Start-PowerStubUpdateCheck { } -ModuleName PowerStub
+    }
+
+    AfterEach {
+        InModuleScope PowerStub -Parameters @{ Path = $script:SourceModulePath } { $Script:ModulePath = $Path }
+    }
+
+    It 'Starts a release check when PowerStub has never been checked' {
+        pstb PlainStub hello 6>$null | Should -Be 'hello output'
+        Should -Invoke Start-PowerStubUpdateCheck -ModuleName PowerStub -Times 1 -Exactly -ParameterFilter {
+            $ScriptName -eq 'Update-PowerStubReleaseStatus.ps1' -and $StateFile -eq $script:ReleaseStateFile
+        }
+    }
+
+    It 'Checks without Git' {
+        InModuleScope PowerStub { $Script:GitAvailable = $false; $Script:GitEnabled = $false }
+        pstb PlainStub hello 6>$null | Should -Be 'hello output'
+        Should -Invoke Start-PowerStubUpdateCheck -ModuleName PowerStub -Times 1 -Exactly -ParameterFilter { $ScriptName -eq 'Update-PowerStubReleaseStatus.ps1' }
+    }
+
+    It 'Does nothing for a copy not installed from a gallery' {
+        InModuleScope PowerStub -Parameters @{ Path = $script:SourceModulePath } { $Script:ModulePath = $Path }
+        Set-ReleaseState -LatestVersion '999.0.0' -LastCheckUtc ([datetime]::UtcNow.AddDays(-2))
+        Get-ReleaseNotices (pstb PlainStub hello 6>&1) | Should -HaveCount 0
+        Should -Invoke Start-PowerStubUpdateCheck -ModuleName PowerStub -Times 0 -Exactly -ParameterFilter { $ScriptName -eq 'Update-PowerStubReleaseStatus.ps1' }
+    }
+
+    It 'Does nothing when ReleaseCheckIntervalHours is <Value>' -ForEach @(
+        @{ Value = 0 }, @{ Value = -1 }, @{ Value = 'never' }
+    ) {
+        InModuleScope PowerStub -Parameters @{ Value = $Value } { Set-PowerStubConfigurationKey 'ReleaseCheckIntervalHours' $Value }
+        pstb PlainStub hello 6>$null | Should -Be 'hello output'
+        Should -Invoke Start-PowerStubUpdateCheck -ModuleName PowerStub -Times 0 -Exactly -ParameterFilter { $ScriptName -eq 'Update-PowerStubReleaseStatus.ps1' }
+    }
+
+    It 'Does nothing when POWERSTUB_NO_UPDATE_CHECK is set' {
+        $env:POWERSTUB_NO_UPDATE_CHECK = '1'
+        pstb PlainStub hello 6>$null | Should -Be 'hello output'
+        Should -Invoke Start-PowerStubUpdateCheck -ModuleName PowerStub -Times 0 -Exactly
+    }
+
+    It 'Does nothing in a non-interactive session' {
+        Mock Test-PowerStubInteractiveSession { $false } -ModuleName PowerStub
+        pstb PlainStub hello 6>$null | Should -Be 'hello output'
+        Should -Invoke Start-PowerStubUpdateCheck -ModuleName PowerStub -Times 0 -Exactly
+    }
+
+    It 'Checks at most once a day' {
+        Set-ReleaseState -LatestVersion "$script:InstalledVersion" -LastCheckUtc ([datetime]::UtcNow.AddHours(-23.9))
+        pstb PlainStub hello 6>$null | Should -Be 'hello output'
+        Should -Invoke Start-PowerStubUpdateCheck -ModuleName PowerStub -Times 0 -Exactly -ParameterFilter { $ScriptName -eq 'Update-PowerStubReleaseStatus.ps1' }
+
+        Set-ReleaseState -LatestVersion "$script:InstalledVersion" -LastCheckUtc ([datetime]::UtcNow.AddHours(-24.1))
+        pstb PlainStub hello 6>$null | Should -Be 'hello output'
+        Should -Invoke Start-PowerStubUpdateCheck -ModuleName PowerStub -Times 1 -Exactly -ParameterFilter { $ScriptName -eq 'Update-PowerStubReleaseStatus.ps1' }
+    }
+
+    It 'Says a newer release exists, once per session, outside the command output' {
+        Set-ReleaseState -LatestVersion '999.0.0'
+        $records = pstb PlainStub hello 6>&1
+        @($records | Where-Object { $_ -isnot [Management.Automation.InformationRecord] }) | Should -Be @('hello output')
+        Get-ReleaseNotices $records | Should -Be @("A newer version of PowerStub is available (999.0.0, you have $script:InstalledVersion). Run 'Update-Module PowerStub' to install it.")
+        Get-ReleaseNotices (pstb PlainStub hello 6>&1) | Should -HaveCount 0
+    }
+
+    It 'Says nothing when PowerStub is current or the check failed' -ForEach @(
+        @{ Status = 'Ready'; Latest = 'installed' }, @{ Status = 'Ready'; Latest = '0.0.1' }, @{ Status = 'CheckFailed'; Latest = '' }
+    ) {
+        $version = if ($Latest -eq 'installed') { "$script:InstalledVersion" } else { $Latest }
+        Set-ReleaseState -LatestVersion $version -Status $Status
+        Get-ReleaseNotices (pstb PlainStub hello 6>&1) | Should -HaveCount 0
+    }
+
+    It 'Records the latest Gallery release in the background script' {
+        Mock Invoke-RestMethod { [PSCustomObject]@{ properties = [PSCustomObject]@{ Version = '9.8.7' } } }
+        [IO.Directory]::CreateDirectory((Split-Path -Parent $script:ReleaseStateFile)) | Out-Null
+        [IO.File]::WriteAllText("$script:ReleaseStateFile.lock", '')
+        & $script:ReleaseScript -Path $script:InstalledModulePath -StateFile $script:ReleaseStateFile
+        $state = InModuleScope PowerStub -Parameters @{ File = $script:ReleaseStateFile } { Read-PowerStubUpdateCheckState -File $File }
+        $state.Status | Should -Be 'Ready'
+        $state.LatestVersion | Should -Be '9.8.7'
+        Test-Path -LiteralPath "$script:ReleaseStateFile.lock" | Should -BeFalse
+    }
+
+    It 'Records a failed Gallery request without a version' {
+        Mock Invoke-RestMethod { throw 'offline' }
+        & $script:ReleaseScript -Path $script:InstalledModulePath -StateFile $script:ReleaseStateFile
+        $state = InModuleScope PowerStub -Parameters @{ File = $script:ReleaseStateFile } { Read-PowerStubUpdateCheckState -File $File }
+        $state.Status | Should -Be 'CheckFailed'
+        $state.LatestVersion | Should -BeNullOrEmpty
+    }
+}
+
 Describe 'Interactive session detection' {
     It 'Is false in CI' {
         $saved = $env:CI

@@ -1,9 +1,10 @@
 <#
 .SYNOPSIS
-  Starts a background check of whether a stub's repository is behind its remote.
+  Starts a background check of whether a stub's repository is behind its remote, or of
+  whether a newer PowerStub release exists.
 
 .DESCRIPTION
-  Runs private/scripts/Update-PowerStubRemoteStatus.ps1 in a hidden, detached pwsh process
+  Runs a script from private/scripts (-ScriptName) in a hidden, detached pwsh process
   and returns immediately. A separate process (not a job) is used because pstb often runs in
   short-lived processes, which would take a job down with them.
 
@@ -15,10 +16,14 @@
   waits for the normal interval instead of trying again straight away.
 
 .PARAMETER StubPath
-  The stub folder to check.
+  The stub folder to check (the module folder for the release check).
 
 .PARAMETER StateFile
   Where the background check records its result.
+
+.PARAMETER ScriptName
+  The background script in private/scripts: Update-PowerStubRemoteStatus.ps1 (a stub's
+  repository, the default) or Update-PowerStubReleaseStatus.ps1 (PowerStub releases).
 #>
 
 function Start-PowerStubUpdateCheck {
@@ -28,7 +33,10 @@ function Start-PowerStubUpdateCheck {
         [string]$StubPath,
 
         [Parameter(Mandatory = $true)]
-        [string]$StateFile
+        [string]$StateFile,
+
+        [ValidateSet('Update-PowerStubRemoteStatus.ps1', 'Update-PowerStubReleaseStatus.ps1')]
+        [string]$ScriptName = 'Update-PowerStubRemoteStatus.ps1'
     )
 
     $lockFile = "$StateFile.lock"
@@ -45,7 +53,7 @@ function Start-PowerStubUpdateCheck {
 
     try {
         $pwsh = Join-Path $PSHOME $(if ($IsWindows) { 'pwsh.exe' } else { 'pwsh' })
-        $script = Join-Path $Script:ModulePath 'private/scripts/Update-PowerStubRemoteStatus.ps1'
+        $script = Join-Path $Script:ModulePath "private/scripts/$ScriptName"
         $arguments = @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $script,
             '-Path', $StubPath, '-StateFile', $StateFile)
 
